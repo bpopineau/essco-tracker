@@ -1,5 +1,7 @@
 // ================== Imports ==================
+import { schemaV1 } from './schema.js';
 import { storage } from './storage.js';
+import { fileDB } from './storage/fileDB.js';
 import { createStore } from './store.js';
 import { clear, el } from './ui/dom.js';
 import { daysUntil, fmtDate, todayStr } from './utils/date.js';
