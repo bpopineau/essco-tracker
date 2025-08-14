@@ -1,29 +1,10 @@
+// ================== Imports ==================
+import { clear, el } from './ui/dom.js';
+import { daysUntil, fmtDate, todayStr } from './utils/date.js';
 import { BUILD_VERSION } from './version.js';
 
-// ================== DOM helpers ==================
-export const $ = (sel, root=document) => root.querySelector(sel);
-export const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
-export function el(tag, props={}, children=[]){
-  const node = Object.assign(document.createElement(tag), props);
-  for (const ch of (Array.isArray(children)?children:[children])){
-    if (ch==null) continue;
-    node.appendChild(typeof ch === 'string' ? document.createTextNode(ch) : ch);
-  }
-  return node;
-}
-export const clear = (node)=> node.innerHTML='';
-
-export const fmtDate = (d)=> new Date(d).toLocaleDateString();
-export const todayStr = ()=> new Date().toISOString().slice(0,10);
-export function daysUntil(dateStr){
-  if (!dateStr) return NaN;
-  const d = new Date(dateStr);
-  const t = new Date();
-  return Math.floor((d - new Date(t.getFullYear(), t.getMonth(), t.getDate()))/86400000);
-}
-
 // ================== Store ==================
-export function createStore(initial){
+function createStore(initial){
   let state = structuredClone(initial);
   const subs = [];
   function get(){ return state; }
@@ -55,7 +36,7 @@ export function createStore(initial){
 // ================== Storage ==================
 const STORAGE_KEY = 'essco_tracker_db_v1';
 let saveTimer = null;
-export const storage = {
+const storage = {
   async load(schema){
     try{
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -103,7 +84,7 @@ export const storage = {
 };
 
 // ================== Schema (v1) ==================
-export const schemaV1 = {
+const schemaV1 = {
   version: 1,
   users: [
     {id:'u1', name:'Ava', email:'ava@essco.local'},
@@ -133,7 +114,7 @@ export const schemaV1 = {
 };
 
 // ================== File handles (IDB) ==================
-export const fileDB = (()=> {
+const fileDB = (()=> {
   const DB = 'essco_fs', STORE = 'handles';
   function open(){ return new Promise((res,rej)=>{
     const req = indexedDB.open(DB, 1);
@@ -675,15 +656,13 @@ function mountInsights(root, store){
   store.emit();
 
   // Service worker (auto-refresh on update)
-
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register(`./sw.js?v=${encodeURIComponent(BUILD_VERSION)}`);
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return;
-    refreshing = true;
-    location.reload();
-  });
-}
-
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register(`./sw.js?v=${encodeURIComponent(BUILD_VERSION)}`);
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      location.reload();
+    });
+  }
 })();
