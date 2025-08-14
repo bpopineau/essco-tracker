@@ -3,6 +3,7 @@ const CACHE   = `essco-cache-${VERSION}`;
 
 const ASSETS = [
   './',
+  './styles.css',
   './manifest.json',
   './icon.svg'
 ];
