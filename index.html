@@ -84,6 +84,14 @@
   }
   @media (max-width:1100px){.app{grid-template-columns:1fr}.kanban{grid-template-columns:1fr}aside{display:none}}
 </style>
+/* Attachments modal */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999}
+.modal > .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;min-width:360px;max-width:560px;padding:14px}
+.modal h3{margin:0 0 8px 0;color:#cfe0ff}
+.modal .row{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.att-list{display:grid;gap:8px;margin-top:8px;max-height:40vh;overflow:auto}
+.att-item{display:flex;gap:8px;align-items:center;justify-content:space-between;border:1px solid var(--border);background:var(--card);border-radius:10px;padding:8px}
+.att-item .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
 </head>
 <body>
 <div class="app">
@@ -416,6 +424,7 @@ function mountNotes(root, store){
   render();
 }
 
+
 function mountTasks(root, store){
   function getUser(id){ return store.get().users.find(u=>u.id===id); }
   function projectTasks(pid){ return store.get().tasks.filter(t=>t.project_id===pid); }
@@ -423,11 +432,9 @@ function mountTasks(root, store){
   function makeId(prefix){ return prefix + Math.random().toString(36).slice(2,8); }
   const STATUS = ['backlog','in_progress','blocked','done'];
 
-  function badge(text, cls){
-    const s = el('span', { className: `pill ${cls||''}` });
-    s.textContent = text;
-    return s;
-  }
+  function badge(text, cls){ const s = el('span', { className: `pill ${cls||''}` }); s.textContent = text; return s; }
+
+  function attCount(t){ return (t.attachments?.length||0); }
 
   function taskCard(t){
     const u = getUser(t.assignee_user_id);
@@ -436,17 +443,110 @@ function mountTasks(root, store){
     if (!Number.isNaN(du) && du<0){ chip='chip-bad'; tip='Overdue'; }
     else if (!Number.isNaN(du) && du<=3){ chip='chip-warn'; tip='Due soon'; }
     const card = el('div', { className:'task', draggable:true, id:t.id });
-    card.innerHTML = `<div>${t.title}</div>
+    card.innerHTML = `<div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+        <div>${t.title}</div>
+        <button class="ghost" title="Attachments" style="padding:4px 8px" data-att-btn>📎 ${attCount(t)}</button>
+      </div>
       <div class="meta">
         <span class="pill assignee">${u?u.name:'Unassigned'}</span>
         <span class="pill prio">P: ${t.priority}</span>
         <span class="pill due ${chip}" title="${tip}">${t.due_date?fmtDate(t.due_date):'No due'}</span>
         ${t.note_id?`<span class="pill">Note ${t.note_id}</span>`:''}
       </div>`;
-    card.addEventListener('dragstart', ev=>{
-      ev.dataTransfer.setData('text/plain', t.id);
-    });
+    card.addEventListener('dragstart', ev=>{ ev.dataTransfer.setData('text/plain', t.id); });
+    card.querySelector('[data-att-btn]').addEventListener('click', ()=> openAttachmentModal(t.id));
     return card;
+  }
+
+  async function ensurePermission(handle){
+    if (!handle) return false;
+    const q = await handle.queryPermission?.({ mode:'read' });
+    if (q === 'granted') return true;
+    const r = await handle.requestPermission?.({ mode:'read' });
+    return r === 'granted';
+  }
+
+  async function pickAndAttach(taskId){
+    if (!window.showOpenFilePicker){
+      alert('Your browser does not support local file linking. Use Chrome/Edge on desktop.');
+      return;
+    }
+    const picks = await showOpenFilePicker({ multiple:true });
+    const newMetas = [];
+    for (const h of picks){
+      const id = await fileDB.putHandle(h);
+      newMetas.push({ id, name: h.name, kind: h.kind || 'file' });
+    }
+    store.update(s=>({
+      ...s,
+      tasks: s.tasks.map(t => t.id===taskId ? { ...t, attachments: [...(t.attachments||[]), ...newMetas] } : t)
+    }));
+  }
+
+  async function openAttachment(att){
+    const handle = await fileDB.getHandle(att.id);
+    if (!handle){ alert('Missing handle. Re-link this attachment.'); return; }
+    const ok = await ensurePermission(handle);
+    if (!ok){ alert('Permission denied. Re-link or grant access.'); return; }
+    const file = await handle.getFile();
+    const url = URL.createObjectURL(file);
+    window.open(url, '_blank');
+    setTimeout(()=> URL.revokeObjectURL(url), 10_000);
+  }
+
+  async function removeAttachment(taskId, att){
+    await fileDB.delHandle(att.id).catch(()=>{});
+    store.update(s=>({
+      ...s,
+      tasks: s.tasks.map(t => t.id===taskId ? { ...t, attachments: (t.attachments||[]).filter(a=>a.id!==att.id) } : t)
+    }));
+  }
+
+  function openAttachmentModal(taskId){
+    const t = store.get().tasks.find(x=>x.id===taskId);
+    const modal = el('div', { className:'modal' });
+    const panel = el('div', { className:'panel' });
+    const head = el('div', { className:'row' });
+    head.append(el('h3', { textContent: 'Attachments' }),
+                el('button', { className:'ghost', textContent:'×', onclick:()=>modal.remove() }));
+    const list = el('div', { className:'att-list' });
+
+    function renderList(){
+      list.innerHTML='';
+      (t.attachments||[]).forEach(att=>{
+        const row = el('div', { className:'att-item' });
+        row.append(
+          el('div', { className:'name', textContent: att.name }),
+          el('div', {}, [
+            el('button', { className:'ghost', textContent:'Open', onclick:()=>openAttachment(att) }),
+            el('button', { className:'ghost', textContent:'Remove', onclick:()=>{ removeAttachment(taskId, att); row.remove(); } })
+          ])
+        );
+        list.appendChild(row);
+      });
+      if (!(t.attachments||[]).length){
+        list.append(el('div', { className:'empty', textContent:'No attachments yet.' }));
+      }
+    }
+
+    const actions = el('div', { className:'row', style:'margin-top:10px' });
+    actions.append(
+      el('button', { className:'primary', textContent:'Add files', onclick:()=>pickAndAttach(taskId).then(()=>{ renderList(); refreshAttBadge(taskId); }) }),
+      el('button', { className:'ghost', textContent:'Close', onclick:()=>modal.remove() })
+    );
+
+    panel.append(head, list, actions);
+    modal.append(panel);
+    document.body.appendChild(modal);
+    renderList();
+  }
+
+  function refreshAttBadge(taskId){
+    // update the 📎 count on the task card (if visible)
+    const s = store.get();
+    const t = s.tasks.find(x=>x.id===taskId);
+    const btn = document.getElementById(taskId)?.querySelector('[data-att-btn]');
+    if (btn) btn.textContent = `📎 ${attCount(t||{})}`;
   }
 
   function render(){
@@ -468,10 +568,8 @@ function mountTasks(root, store){
     STATUS.forEach(st=>{
       const col = el('div', { className:'col' });
       col.append(el('h4', { textContent: st.replace('_',' ').replace(/^./,c=>c.toUpperCase()) }));
-      const drop = el('div', { className:'drop' });
-      drop.dataset.status = st;
-      col.append(drop);
-      kanban.append(col);
+      const drop = el('div', { className:'drop' }); drop.dataset.status = st;
+      col.append(drop); kanban.append(col);
     });
 
     const tableWrap = el('div', { id:'tableWrap', className:'card', style: state.ui.viewMode==='table'?'':'display:none' });
@@ -495,20 +593,12 @@ function mountTasks(root, store){
     const qrow = el('div', { className:'row' });
     const qaTitle = el('input', { id:'qaTitle', placeholder:'Task title', style:'min-width:260px' });
     const qaAssignee = el('select', { id:'qaAssignee' });
-    store.get().users.forEach(u=>{
-      const o = el('option', { value: u.id, textContent: u.name });
-      qaAssignee.appendChild(o);
-    });
-    const qaPriority = el('select', { id:'qaPriority' });
-    qaPriority.innerHTML = `<option value="low">Low</option><option value="med" selected>Med</option><option value="high">High</option>`;
+    store.get().users.forEach(u=> qaAssignee.appendChild(el('option', { value:u.id, textContent:u.name })));
+    const qaPriority = el('select', { id:'qaPriority' }); qaPriority.innerHTML = `<option value="low">Low</option><option value="med" selected>Med</option><option value="high">High</option>`;
     const qaDue = el('input', { id:'qaDue', type:'date' });
     const qaNoteLink = el('select', { id:'qaNoteLink' });
-    const optNone = el('option', { value:'', textContent:'(no note link)' });
-    qaNoteLink.appendChild(optNone);
-    projectNotes(pid).forEach(n=>{
-      const o = el('option', { value:n.id, textContent: `${fmtDate(n.meeting_date)} — ${n.id}` });
-      qaNoteLink.appendChild(o);
-    });
+    qaNoteLink.appendChild(el('option', { value:'', textContent:'(no note link)' }));
+    projectNotes(pid).forEach(n=> qaNoteLink.appendChild(el('option', { value:n.id, textContent:`${fmtDate(n.meeting_date)} — ${n.id}` })));
     const qaAdd = el('button', { id:'qaAdd', className:'primary', textContent:'Add' });
     qrow.append(qaTitle, qaAssignee, qaPriority, qaDue, qaNoteLink, qaAdd);
     quick.appendChild(qrow);
@@ -521,29 +611,18 @@ function mountTasks(root, store){
     const soon = open.filter(t=>{ const du=daysUntil(t.due_date); return du>=0 && du<=3; }).length;
     summary.append(badge(`Overdue: ${overdue}`, 'chip-bad'), badge(`Due ≤3d: ${soon}`, 'chip-warn'), badge(`Open: ${open.length}`, ''));
 
-    // Render Kanban cards
+    // Kanban
     if (state.ui.viewMode==='kanban'){
-      ['backlog','in_progress','blocked','done'].forEach(st=>{
+      STATUS.forEach(st=>{
         const container = root.querySelector(`.drop[data-status="${st}"]`) || Array.from(root.querySelectorAll('.drop')).find(d=>d.dataset.status===st);
-        if (container) {
-          container.innerHTML='';
-          projectTasks(pid).filter(t=>t.status===st).forEach(t=> container.appendChild(taskCard(t)));
-        }
+        container.innerHTML='';
+        projectTasks(pid).filter(t=>t.status===st).forEach(t=> container.appendChild(taskCard(t)));
       });
-
-      // Delegate DnD
       const board = kanban;
-      board.addEventListener('dragenter', (ev)=>{
-        const drop = ev.target.closest('.drop'); if (drop) drop.classList.add('is-over');
-      });
-      board.addEventListener('dragleave', (ev)=>{
-        const drop = ev.target.closest('.drop'); if (drop) drop.classList.remove('is-over');
-      });
-      board.addEventListener('dragover', (ev)=>{
-        if (ev.target.closest('.drop')) ev.preventDefault();
-      });
-      board.addEventListener('drop', (ev)=>{
-        const drop = ev.target.closest('.drop'); if (!drop) return;
+      board.addEventListener('dragenter', (ev)=>{ const drop = ev.target.closest('.drop'); if (drop) drop.classList.add('is-over'); });
+      board.addEventListener('dragleave', (ev)=>{ const drop = ev.target.closest('.drop'); if (drop) drop.classList.remove('is-over'); });
+      board.addEventListener('dragover', (ev)=>{ if (ev.target.closest('.drop')) ev.preventDefault(); });
+      board.addEventListener('drop', (ev)=>{ const drop = ev.target.closest('.drop'); if (!drop) return;
         ev.preventDefault();
         const id = ev.dataTransfer.getData('text/plain');
         const s = store.get();
@@ -552,14 +631,14 @@ function mountTasks(root, store){
         const nextTasks = s.tasks.map(x=>x.id===id? moved : x);
         store.update(()=>({ ...s, tasks: nextTasks }));
         drop.classList.remove('is-over');
-      }, { once: true });
+      }, { once:true });
     }
 
-    // Render Table
+    // Table
     if (state.ui.viewMode==='table'){
       const body = tableWrap.querySelector('#taskTable');
-      let arr = projectTasks(pid);
-      arr = arr.sort((a,b)=>{
+      let arr = projectTasks(pid).slice();
+      arr.sort((a,b)=>{
         if(!a.due_date && !b.due_date) return 0;
         if(!a.due_date) return 1;
         if(!b.due_date) return -1;
@@ -568,21 +647,19 @@ function mountTasks(root, store){
       body.innerHTML='';
       arr.forEach(t=>{
         const u = getUser(t.assignee_user_id);
-        const tr = el('tr', {});
+        const tr = el('tr');
         tr.innerHTML = `
-          <td>${t.title}</td>
+          <td>${t.title} ${attCount(t)?`<span class="pill" title="Attachments">📎 ${attCount(t)}</span>`:''}</td>
           <td>${u?u.name:'—'}</td>
           <td>${t.due_date?fmtDate(t.due_date):'—'}</td>
           <td>${t.priority}</td>
           <td>${t.status.replace('_',' ')}</td>
           <td>${t.note_id||'—'}</td>`;
+        tr.addEventListener('click', ()=> openAttachmentModal(t.id));
         body.appendChild(tr);
       });
       const dueHeader = tableWrap.querySelector('#sortDue');
-      dueHeader.onclick = ()=>{
-        const ui = store.get().ui;
-        store.set({ ui: { ...ui, sortDueAsc: !ui.sortDueAsc } });
-      };
+      dueHeader.onclick = ()=>{ const ui = store.get().ui; store.set({ ui: { ...ui, sortDueAsc: !ui.sortDueAsc } }); };
     }
 
     // View toggles
@@ -597,17 +674,14 @@ function mountTasks(root, store){
       const pr = qaPriority.value;
       const due = qaDue.value || null;
       const note = qaNoteLink.value || null;
-      const t = { id: makeId('t'), project_id: pid, note_id: note || null, title, assignee_user_id: ass, status:'backlog', priority: pr, due_date: due };
-      const next = [...store.get().tasks, t];
-      store.update(s=>({ ...s, tasks: next }));
+      const t = { id: makeId('t'), project_id: pid, note_id: note || null, title, assignee_user_id: ass, status:'backlog', priority: pr, due_date: due, attachments: [] };
+      store.update(s=>({ ...s, tasks: [...s.tasks, t] }));
       qaTitle.value=''; qaDue.value='';
     };
     qaTitle.addEventListener('keydown', e=>{ if(e.key==='Enter') root.querySelector('#qaAdd').click(); });
   }
 
-  store.subscribe((_, keys)=>{
-    if (keys.some(k=>['tasks','notes','users','ui'].includes(k))) render();
-  });
+  store.subscribe((_, keys)=>{ if (keys.some(k=>['tasks','notes','users','ui'].includes(k))) render(); });
   render();
 }
 
@@ -747,6 +821,43 @@ function mountInsights(root, store){
   store.emit();
 })();
 </script>
+// --- File handle store (IndexedDB) ---
+const fileDB = (()=> {
+  const DB = 'essco_fs', STORE = 'handles';
+  function open(){ return new Promise((res,rej)=>{
+    const req = indexedDB.open(DB, 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, { keyPath:'id' });
+    req.onsuccess = e => res(e.target.result);
+    req.onerror = () => rej(req.error);
+  });}
+  async function putHandle(handle){
+    const db = await open(); const id = crypto.randomUUID();
+    await new Promise((res,rej)=>{
+      const tx=db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).put({ id, handle });
+      tx.oncomplete=res; tx.onerror=()=>rej(tx.error);
+    });
+    return id;
+  }
+  async function getHandle(id){
+    const db = await open();
+    return new Promise((res,rej)=>{
+      const tx=db.transaction(STORE,'readonly');
+      const rq=tx.objectStore(STORE).get(id);
+      rq.onsuccess=()=>res(rq.result?.handle||null);
+      rq.onerror=()=>rej(rq.error);
+    });
+  }
+  async function delHandle(id){
+    const db = await open();
+    return new Promise((res,rej)=>{
+      const tx=db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).delete(id);
+      tx.oncomplete=res; tx.onerror=()=>rej(tx.error);
+    });
+  }
+  return { putHandle, getHandle, delHandle };
+})();
 <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js');
