@@ -1,3 +1,5 @@
+import { BUILD_VERSION } from './version.js';
+
 // ================== DOM helpers ==================
 export const $ = (sel, root=document) => root.querySelector(sel);
 export const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
@@ -673,13 +675,15 @@ function mountInsights(root, store){
   store.emit();
 
   // Service worker (auto-refresh on update)
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js');
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshing) return;
-      refreshing = true;
-      location.reload();
-    });
-  }
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register(`./sw.js?v=${encodeURIComponent(BUILD_VERSION)}`);
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    location.reload();
+  });
+}
+
 })();

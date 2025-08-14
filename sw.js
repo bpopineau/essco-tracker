@@ -1,10 +1,12 @@
-// Bump this on deploys (e.g., commit hash/date)
-const CACHE = 'essco-cache-v3';
+const VERSION = new URL(self.location).searchParams.get('v') || 'dev';
+const CACHE   = `essco-cache-${VERSION}`;
+
 const ASSETS = [
-  './',            // keep for offline fallback
+  './',
   './manifest.json',
   './icon.svg'
 ];
+
 
 // Install: precache minimal assets + take control ASAP
 self.addEventListener('install', (event) => {
