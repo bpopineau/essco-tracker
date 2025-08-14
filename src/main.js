@@ -1,4 +1,6 @@
 // ================== Imports ==================
+import { storage } from './storage.js';
+import { createStore } from './store.js';
 import { clear, el } from './ui/dom.js';
 import { daysUntil, fmtDate, todayStr } from './utils/date.js';
 import { BUILD_VERSION } from './version.js';
