@@ -821,6 +821,7 @@ function mountInsights(root, store){
   store.emit();
 })();
 </script>
+<script>
 // --- File handle store (IndexedDB) ---
 const fileDB = (()=> {
   const DB = 'essco_fs', STORE = 'handles';
@@ -858,6 +859,7 @@ const fileDB = (()=> {
   }
   return { putHandle, getHandle, delHandle };
 })();
+</script>
 <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js');
