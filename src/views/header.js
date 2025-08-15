@@ -3,6 +3,9 @@ import { storage } from '../storage.js';
 import { el, toast } from '../ui/dom.js';
 import { fmtDate } from '../utils/date.js';
 
+/** @param {{ [k:string]: HTMLElement }} refs
+ *  @param {{ get:Function, set:Function, subscribe:Function }} store
+ */
 export function mountHeader(refs, store){
   const { projTitleEl, projMetaEl, statusBadgeEl, exportBtn, importInput, newNoteBtn, newTaskBtn } = refs;
 
@@ -22,7 +25,7 @@ export function mountHeader(refs, store){
 
   // Listen to storage autosave events for feedback
   if (typeof storage.onStatusChange === 'function') {
-    storage.onStatusChange((status) => {
+    storage.onStatusChange((/** @type {string} */status) => {
       if (saveStatus) {
         saveStatus.textContent =
           status === 'saving' ? 'Saving…' :
@@ -61,7 +64,7 @@ export function mountHeader(refs, store){
       style:'margin-left:8px'
     });
     actionsRow.appendChild(delBtn);
-    delBtn.addEventListener('click', ()=> openDeleteProjectModal(store, delBtn));
+    delBtn.addEventListener('click', ()=> openDeleteProjectModal(store));
   }
 
   function render(){
@@ -78,19 +81,20 @@ export function mountHeader(refs, store){
     toast('Export started', { type:'success' });
   });
 
-  importInput.addEventListener('change', async (e)=>{
-    const file = e.target.files?.[0]; if (!file) return;
+  importInput.addEventListener('change', async (/** @type {Event} */ e)=>{
+  const input = /** @type {HTMLInputElement|null} */(e.target instanceof HTMLInputElement ? e.target : null);
+  const file = input?.files?.[0]; if (!file) return;
     openImportModal(file, store, importInput);
   });
 
   newTaskBtn.addEventListener('click', ()=>{
     store.set({ ui: { ...store.get().ui, activeTab: 'tasks' } });
-    setTimeout(()=>document.getElementById('qaTitle')?.focus(), 0);
+    { const el = /** @type {HTMLElement|null} */(document.getElementById('qaTitle')); if (el) setTimeout(()=> el.focus(), 0); }
   });
 
   newNoteBtn.addEventListener('click', ()=>{
     store.set({ ui: { ...store.get().ui, activeTab: 'notes' } });
-    setTimeout(()=>document.getElementById('noteBody')?.focus(), 0);
+    { const el = /** @type {HTMLElement|null} */(document.getElementById('noteBody')); if (el) setTimeout(()=> el.focus(), 0); }
   });
 
   // Granular subscription: only re-render on relevant keys
@@ -103,6 +107,10 @@ export function mountHeader(refs, store){
 }
 
 /* ---------------- Import Modal ---------------- */
+/** @param {File} file
+ *  @param {{ get:Function, set:Function }} store
+ *  @param {HTMLInputElement} inputEl
+ */
 function openImportModal(file, store, inputEl){
   const modal = el('div', { className:'modal' });
   const panel = el('div', { className:'panel', role:'dialog', ariaModal:'true' });
@@ -152,18 +160,18 @@ function openImportModal(file, store, inputEl){
   document.body.appendChild(modal);
 
   ok.onclick = async ()=>{
-    const mode = panel.querySelector('input[name="impMode"]:checked')?.value || 'merge';
+    const mode = /** @type {HTMLInputElement|null} */(panel.querySelector('input[name="impMode"]:checked'))?.value || 'merge';
     try{
       let imported = await storage.importJSON(file, { strategy: mode });
       // Apply schema migration before replacing
       if (typeof storage.migrate === 'function') {
-        imported = storage.migrate(imported, imported.version || null);
+        imported = storage.migrate(imported);
       }
       if (typeof store.replace === 'function') store.replace(imported);
       else store.update(()=>imported);
-      toast(`Import complete (${mode})`, { type:'success' });
+  toast(`Import complete (${mode})`, { type:'success' });
     }catch(err){
-      toast('Import failed', { type:'error' });
+  toast('Import failed', { type:'error' });
       console.error('[header] import error:', err);
     }finally{
       if (inputEl) inputEl.value = '';
@@ -224,7 +232,7 @@ function openDeleteProjectModal(store){
   archiveBtn.onclick = ()=>{
     store.update(s=>({ projects: s.projects.map(p=>p.id===pid? { ...p, status:'archived' } : p) }));
     closeModal();
-    toast('Project archived', { type:'success' });
+  toast('Project archived', { type:'success' });
   };
 
   const right = el('div', { className:'row' });
@@ -238,7 +246,11 @@ function openDeleteProjectModal(store){
   document.body.appendChild(modal);
 
   const input = body.querySelector('#confirmStr');
-  input.addEventListener('input', ()=>{ del.disabled = input.value.trim() !== proj.job_number; });
+  input.addEventListener('input', ()=>{
+    const btn = /** @type {HTMLButtonElement} */(del);
+    const inp = /** @type {HTMLInputElement} */(input);
+    btn.disabled = inp.value.trim() !== proj.job_number;
+  });
 
   del.onclick = ()=>{
     const snapshot = store.get();

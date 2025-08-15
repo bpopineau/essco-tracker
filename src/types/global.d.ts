@@ -1,10 +1,10 @@
 // Global app types used by JSDoc across .js files
 
-interface User { id: string; name: string }
+export interface User { id: string; name: string }
 
-interface Attachment { id: string; name: string; kind?: string }
+export interface Attachment { id: string; name: string; kind?: string }
 
-interface Task {
+export interface Task {
   id: string;
   project_id: string;
   assignee_user_id?: string | null;
@@ -14,7 +14,7 @@ interface Task {
   attachments?: Attachment[];
 }
 
-interface Note {
+export interface Note {
   id: string;
   project_id: string;
   body?: string;
@@ -22,7 +22,7 @@ interface Note {
   pinned?: boolean;
 }
 
-interface Project {
+export interface Project {
   id: string;
   job_number: string;
   name: string;
@@ -32,7 +32,7 @@ interface Project {
   start_date?: string | null;
 }
 
-interface State {
+export interface State {
   users: User[];
   tasks: Task[];
   notes: Note[];
@@ -40,12 +40,21 @@ interface State {
   ui: any;
 }
 
-type Updater = (s: State) => State;
+// Updater returns a partial patch applied via store.set/update
+export type Updater = (s: State) => Partial<State> | void;
 
-interface Store {
+export interface Store {
   get(): State;
-  update(fn: Updater): void;
-  subscribe(fn: (s: State, keys: string[]) => void): () => void;
+  set(patch: Partial<State>, opts?: { silent?: boolean }): void;
+  update(fn: Updater, opts?: { silent?: boolean }): void;
+  replace(next: State, opts?: { silent?: boolean }): void;
+  reset(opts?: { silent?: boolean }): void;
+  emit(keys?: string[]): void;
+  batch(run: () => void): void;
+  undo(): void;
+  redo(): void;
+  getLastChangedKeys(): string[];
+  subscribe(fn: (s: State, keys: string[]) => void, deps?: string[] | ((s: State, keys: string[]) => boolean)): () => void;
 }
 
 // Window augments we actually use

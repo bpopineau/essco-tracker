@@ -19,6 +19,11 @@ function shallowEqual(a, b) {
   return true;
 }
 
+/**
+ * Create application store
+ * @param {import('./types/global').State} initial
+ * @param {{ undoDepth?: number }} [cfg]
+ */
 export function createStore(initial, { undoDepth = 0 } = {}) {
   let initialState = clone(initial);
   let state = clone(initial);
@@ -35,6 +40,11 @@ export function createStore(initial, { undoDepth = 0 } = {}) {
   function get() { return state; }
   function getLastChangedKeys() { return [...lastChangedKeys]; }
 
+  /**
+   * Shallow merge patch into state
+   * @param {Partial<import('./types/global').State>} patch
+   * @param {{ silent?: boolean }} [opts]
+   */
   function set(patch, opts = {}) {
     if (!patch || typeof patch !== 'object') return;
 
@@ -70,12 +80,22 @@ export function createStore(initial, { undoDepth = 0 } = {}) {
     }
   }
 
+  /**
+   * Derive a patch from current state via updater
+   * @param {(s: import('./types/global').State)=> (Partial<import('./types/global').State>|void)} fn
+   * @param {{ silent?: boolean }} [opts]
+   */
   function update(fn, opts) {
     const draft = clone(state);
     const patch = fn(draft) || {};
-    set(patch, opts);
+    set(/** @type {Partial<import('./types/global').State>} */(patch), opts);
   }
 
+  /**
+   * Replace entire state
+   * @param {import('./types/global').State} next
+   * @param {{ silent?: boolean }} [opts]
+   */
   function replace(next, opts = {}) {
     if (undoDepth > 0 && !opts.silent) pushUndo();
     const nextState = clone(next) || {};
@@ -86,20 +106,28 @@ export function createStore(initial, { undoDepth = 0 } = {}) {
     if (!opts.silent) scheduleFlush();
   }
 
+  /** @param {{ silent?: boolean }} [opts] */
   function reset(opts = {}) {
     replace(initialState, opts);
   }
 
+  /**
+   * Subscribe to store changes
+   * @param {(s:import('./types/global').State, keys:string[])=>void} fn
+   * @param {string[] | ((s:import('./types/global').State, keys:string[])=>boolean)=} deps
+   */
   function subscribe(fn, deps) {
     const sub = { fn, deps };
     subs.add(sub);
     return () => subs.delete(sub);
   }
 
+  /** @param {string[]=} changedKeys */
   function emit(changedKeys = Object.keys(state)) {
     dispatch(Array.from(new Set(changedKeys)));
   }
 
+  /** @param {Function} run */
   function batch(run) {
     if (inBatch) return run();
     inBatch = true;
@@ -150,6 +178,7 @@ export function createStore(initial, { undoDepth = 0 } = {}) {
     dispatch(lastChangedKeys);
   }
 
+  /** @param {string[]} changedKeys */
   function dispatch(changedKeys) {
     subs.forEach(({ fn, deps }) => {
       try {

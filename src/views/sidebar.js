@@ -2,8 +2,14 @@
 import { clear, el, highlightText, on, toast } from '../ui/dom.js';
 import { fmtDate } from '../utils/date.js';
 
+/** @param {string} prefix */
 const makeId = (prefix)=> prefix + Math.random().toString(36).slice(2,8);
 
+/**
+ * @param {HTMLElement} listEl
+ * @param {HTMLInputElement} searchEl
+ * @param {import('../types/global').Store} store
+ */
 export function mountSidebar(listEl, searchEl, store){
   // Inject "+ Project" button next to the search input (once)
   let addBtn = searchEl.parentElement.querySelector('#btnNewProject');
@@ -162,6 +168,7 @@ export function mountSidebar(listEl, searchEl, store){
 }
 
 /* ----------------- Modal: Create Project ----------------- */
+/** @param {import('../types/global').Store} store @param {HTMLElement=} _triggerBtn */
 function openCreateProjectModal(store, _triggerBtn){
   const state = store.get();
   const modal = el('div', { className:'modal' });

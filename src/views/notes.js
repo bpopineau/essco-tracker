@@ -26,19 +26,30 @@
 import { clear, el, highlightText, toast } from '../ui/dom.js';
 import { fmtDate, parseDate, todayStr } from '../utils/date.js';
 
+/**
+ * @param {HTMLElement} root
+ * @param {import('../types/global').Store} store
+ */
 export function mountNotes(root, store){
+  /** @param {string} prefix */
   const makeId = (prefix)=> prefix + Math.random().toString(36).slice(2,8);
+  /** @param {any} v */
   const nBool = (v)=> (v ? 1 : 0);
 
+  /** @param {string} pid */
+  /** @param {string} pid */
   const projectNotes = (pid)=> store.get().notes
-    .filter(n=>n.project_id===pid)
+    .filter((n)=>n.project_id===pid)
     .sort((a,b)=>{
       // pinned first, then newest meeting_date first
       const pinCmp = nBool(b.pinned) - nBool(a.pinned);
       if (pinCmp) return pinCmp;
       const da = parseDate(a.meeting_date || '');
       const db = parseDate(b.meeting_date || '');
-      return db - da;
+      if (!db && !da) return 0;
+      if (!db) return 1;
+      if (!da) return -1;
+      return db.getTime() - da.getTime();
     });
 
   const ensureUI = ()=>{
@@ -100,7 +111,7 @@ export function mountNotes(root, store){
     notesList.replaceChildren();
     empty.style.display = arr.length ? 'none' : 'block';
 
-    arr.forEach(n=>{
+  arr.forEach((n)=>{
       const isEditing = state.ui.editingNoteId === n.id;
       const card = el('div', { className:'note' });
 
@@ -148,27 +159,27 @@ export function mountNotes(root, store){
       const bodyWrap = el('div', { style:'margin-top:6px' });
       if (isEditing) {
         const ta = el('textarea', { rows:10, style:'width:100%;margin-bottom:8px' });
-        ta.value = n.body || '';
+  /** @type {HTMLTextAreaElement} */(ta).value = n.body || '';
         const hint = el('div', { className:'muted', style:'margin-bottom:6px' }, 'Ctrl/Cmd+Enter to save, Esc to cancel');
 
         const actions = el('div', { className:'row', style:'gap:8px;justify-content:flex-end' });
   const saveEd = el('button', { className:'primary', textContent:'Save' });
   const cancelEd = el('button', { className:'ghost', textContent:'Cancel' });
 
-        ta.addEventListener('keydown', (e)=>{
-          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); commitEdit(ta.value, n, editBtn); }
+  ta.addEventListener('keydown', (e)=>{
+          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); commitEdit(/** @type {HTMLTextAreaElement} */(ta).value, n, editBtn); }
           else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(editBtn); }
         });
-        saveEd.onclick = ()=> commitEdit(ta.value, n, editBtn);
+  saveEd.onclick = ()=> commitEdit(/** @type {HTMLTextAreaElement} */(ta).value, n, editBtn);
         cancelEd.onclick = ()=> cancelEdit(editBtn);
 
         actions.append(cancelEd, saveEd);
         bodyWrap.append(hint, ta, actions);
-        setTimeout(()=> ta.focus(), 0);
+  setTimeout(()=> /** @type {HTMLTextAreaElement} */(ta).focus(), 0);
       } else {
         const bodyEl = el('div', { style:'white-space:pre-wrap' });
         linkifyNoteBody(bodyEl, n.body || '');
-        if (searchTerm) highlightText(bodyEl, searchTerm);
+  if (searchTerm) highlightText(bodyEl, searchTerm);
         bodyWrap.append(bodyEl);
       }
 
@@ -177,37 +188,40 @@ export function mountNotes(root, store){
     });
 
     /* ---- interactions ---- */
-    const pushSearch = ()=>{
+  const pushSearch = ()=>{
       const ui2 = store.get().ui || {};
-      store.set({ ui: { ...ui2, noteSearch: search.value.trim() } });
+      store.set({ ui: { ...ui2, noteSearch: /** @type {HTMLInputElement} */(search).value.trim() } });
     };
     search.oninput = pushSearch;
-    clearBtn.onclick = ()=>{ search.value = ''; pushSearch(); };
+    clearBtn.onclick = ()=>{ /** @type {HTMLInputElement} */(search).value = ''; pushSearch(); };
 
-    saveBtn.addEventListener('click', ()=>{
-      const text = body.value.trim();
-      const date = dateInput.value || todayStr();
-      if (!text) { toast('Write something first.', { type:'error' }); return; }
+  saveBtn.addEventListener('click', ()=>{
+  const text = /** @type {HTMLTextAreaElement} */(body).value.trim();
+  const date = /** @type {HTMLInputElement} */(dateInput).value || todayStr();
+  if (!text) { toast('Write something first.', { type:'error' }); return; }
       const note = { id: makeId('n'), project_id: pid, meeting_date: date, body: text, pinned: false };
       store.update(s=>({ notes: [...s.notes, note] }));
-      body.value = '';
+  /** @type {HTMLTextAreaElement} */(body).value = '';
       toast('Note added', { type:'success' });
     });
   }
 
   /* ---------- edit helpers ---------- */
+  /** @param {Note} note @param {HTMLElement=} _trigger */
   function startEdit(note, _trigger){
     const ui = store.get().ui || {};
     store.set({ ui: { ...ui, editingNoteId: note.id } });
   }
 
+  /** @param {HTMLElement=} _trigger */
   function cancelEdit(_trigger){
     const ui = store.get().ui || {};
     store.set({ ui: { ...ui, editingNoteId: null } });
     if (_trigger && typeof _trigger.focus === 'function') setTimeout(()=>_trigger.focus(), 0);
-    toast('Edit cancelled', { type:'warn' });
+  toast('Edit cancelled', { type:'warn' });
   }
 
+  /** @param {string} text @param {Note} note @param {HTMLElement=} _trigger */
   function commitEdit(text, note, _trigger){
     const val = (text || '').trim();
     store.update(s=>({
@@ -215,17 +229,18 @@ export function mountNotes(root, store){
       ui: { ...s.ui, editingNoteId: null }
     }));
     if (_trigger && typeof _trigger.focus === 'function') setTimeout(()=>_trigger.focus(), 0);
-    toast('Note updated', { type:'success' });
+  toast('Note updated', { type:'success' });
   }
 
   /* ---------- other helpers ---------- */
+  /** @param {Note} note */
   function deleteNote(note){
     const _s = store.get();
     store.update(st => ({
       notes: st.notes.filter(n => n.id !== note.id),
       ui: { ...st.ui, editingNoteId: st.ui.editingNoteId === note.id ? null : st.ui.editingNoteId }
     }));
-    toast(`Deleted note ${note.id}`, {
+  toast(`Deleted note ${note.id}`, {
       type: 'warn',
       action: {
         label: 'Undo',
@@ -237,15 +252,17 @@ export function mountNotes(root, store){
     });
   }
 
+  /** @param {Note} n */
   function linkedCount(n){
     const s = store.get();
-    return s.tasks.filter(t=>t.project_id===n.project_id && t.note_id===n.id).length;
+  return s.tasks.filter(t=>t.project_id===n.project_id && t.note_id===n.id).length;
   }
 
 
   /**
    * @param {{id: string, pinned: boolean}} note
    */
+  /** @param {Note} note */
   function togglePin(note){
     store.update((/** @type {State} */ s) => ({
       notes: s.notes.map((/** @type {Note} */ n) =>
@@ -269,7 +286,7 @@ export function mountNotes(root, store){
       if (before) container.appendChild(document.createTextNode(before));
 
       const token = m[1];
-      const chip = el('button', {
+  const chip = el('button', {
         className:'pill',
         title:`Search tasks for “${token}”`,
         onclick: ()=>{
