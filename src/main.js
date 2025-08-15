@@ -21,16 +21,16 @@ const schema = buildSchema(DEV_MODE);
 // ---------- Boot ----------
 (async function main () {
   const initial = await storage.load(schema);
-  const store = createStore(initial);
+  const _store = createStore(initial);
 
   // Ensure a default active tab exists
-  const s0 = store.get();
+  const s0 = _store.get();
   if (!s0.ui || !('activeTab' in s0.ui)) {
-    store.set({ ui: { ...(s0.ui || {}), activeTab: 'notes' } });
+    _store.set({ ui: { ...(s0.ui || {}), activeTab: 'notes' } });
   }
 
   // Persist on changes (autosave; ignore UI-only keys; don't store `ui`)
-  storage.attachAutosave(store, {
+  storage.attachAutosave(_store, {
     debounce: 300,
     ignoreKeysPrefix: ['ui'],
     persistFilter: (s) => {
@@ -43,7 +43,7 @@ const schema = buildSchema(DEV_MODE);
   mountSidebar(
     document.getElementById('projList'),
     document.getElementById('search'),
-    store
+    _store
   );
 
   // Header
@@ -55,7 +55,7 @@ const schema = buildSchema(DEV_MODE);
     importInput: document.getElementById('importFile'),
     newNoteBtn: document.getElementById('newNoteBtn'),
     newTaskBtn: document.getElementById('newTaskBtn'),
-  }, store);
+  }, _store);
 
   // Dev-only Reset Seed button
   if (DEV_MODE) {
@@ -83,17 +83,17 @@ const schema = buildSchema(DEV_MODE);
   }
 
   // Views
-  mountNotes(document.getElementById('panel-notes'), store);
-  mountTasks(document.getElementById('panel-tasks'), store);
-  mountInsights(document.getElementById('panel-insights'), store);
+  mountNotes(document.getElementById('panel-notes'), _store);
+  mountTasks(document.getElementById('panel-tasks'), _store);
+  mountInsights(document.getElementById('panel-insights'), _store);
 
   // Tabs (top-level app tabs)
   const tabs = document.querySelectorAll('.tabs .tab');
   tabs.forEach(t => {
     t.addEventListener('click', () => {
       const tab = t.dataset.tab;
-      const _ui = store.get().ui || {};
-      store.set({ ui: { ..._ui, activeTab: tab } });
+      const _ui = _store.get().ui || {};
+      _store.set({ ui: { ..._ui, activeTab: tab } });
     });
     // Keyboard activate on Space/Enter
     t.addEventListener('keydown', (e) => {
