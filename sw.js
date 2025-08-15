@@ -1,8 +1,13 @@
+/// <reference lib="webworker" />
+// @ts-check
+/** @type {ServiceWorkerGlobalScope} */
+const sw = /** @type {any} */ (self);
+
 /* sw.js — versioned via ?v=... in register() */
-const VERSION = new URL(self.location).searchParams.get('v') || 'dev';
+const VERSION = new URL(sw.location.href).searchParams.get('v') || 'dev';
 const CACHE   = `essco-cache-${VERSION}`;
-const ORIGIN  = self.location.origin;
-const INDEX   = new URL('./index.html', self.location).href; // Explicit SPA fallback target
+const ORIGIN  = sw.location.origin;
+const INDEX   = new URL('./index.html', sw.location.href).href; // Explicit SPA fallback target
 
 // Core files to cache for offline fallback
 const CORE = [
@@ -18,17 +23,17 @@ const CORE = [
 ];
 
 // ---- Install: precache core + activate immediately
-self.addEventListener('install', (event) => {
+sw.addEventListener('install', (/** @type {ExtendableEvent} */ event) => {
   event.waitUntil((async () => {
     try {
       const cache = await caches.open(CACHE);
       await cache.addAll(CORE);
     } finally {
       // Take control without waiting for a close/reopen
-      await self.skipWaiting();
+      await sw.skipWaiting();
 
       // Notify clients a new SW is installed (optional)
-      const clientsList = await self.clients.matchAll({ type: 'window' });
+      const clientsList = await sw.clients.matchAll({ type: 'window' });
       clientsList.forEach(client => {
         client.postMessage({ type: 'NEW_VERSION', version: VERSION });
       });
@@ -37,30 +42,28 @@ self.addEventListener('install', (event) => {
 });
 
 // ---- Activate: clear old caches + control all pages now + enable nav preload
-self.addEventListener('activate', (event) => {
+sw.addEventListener('activate', (/** @type {ExtendableEvent} */ event) => {
   event.waitUntil((async () => {
     // Clean old versions
     const keys = await caches.keys();
     await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
 
     // Speed up navigations by letting the browser start the fetch early
-    if ('navigationPreload' in self.registration) {
-      try { await self.registration.navigationPreload.enable(); } catch {}
+    if ('navigationPreload' in sw.registration) {
+      try { await sw.registration.navigationPreload.enable(); } catch {}
     }
 
-    await self.clients.claim();
+    await sw.clients.claim();
   })());
 });
 
 // ---- Message: allow client to trigger skipWaiting (toast "Refresh")
-self.addEventListener('message', (event) => {
-  if (event?.data?.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
+sw.addEventListener('message', (/** @type {ExtendableMessageEvent} */ event) => {
+  if (event?.data?.type === 'SKIP_WAITING') sw.skipWaiting();
 });
 
 // ---- Fetch: network-first for navigations + JS/CSS; cache-first for other static assets
-self.addEventListener('fetch', (event) => {
+sw.addEventListener('fetch', (/** @type {FetchEvent} */  event) => {
   const req = event.request;
 
   // Only GET requests
@@ -86,6 +89,7 @@ self.addEventListener('fetch', (event) => {
 });
 
 // -------- Strategies
+/** @param {FetchEvent} event */
 async function networkFirstNavigation(event) {
   const cache = await caches.open(CACHE);
 
@@ -116,6 +120,7 @@ async function networkFirstNavigation(event) {
   }
 }
 
+/** @param {Request} req */
 async function networkFirstAsset(req) {
   const cache = await caches.open(CACHE);
   try {
@@ -128,6 +133,7 @@ async function networkFirstAsset(req) {
   }
 }
 
+/** @param {Request} req */
 async function cacheFirst(req) {
   const cache = await caches.open(CACHE);
   const cached = await cache.match(req);
