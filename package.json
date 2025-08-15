@@ -1,0 +1,12 @@
+﻿{
+    "devDependencies":  {
+                            "@tsconfig/recommended":  "^1.0.10",
+                            "@typescript-eslint/eslint-plugin":  "^8.39.1",
+                            "@typescript-eslint/parser":  "^8.39.1",
+                            "eslint":  "^9.33.0",
+                            "globals":  "^16.3.0",
+                            "prettier":  "^3.6.2",
+                            "typescript":  "^5.9.2"
+                        },
+    "type":  "module"
+}
