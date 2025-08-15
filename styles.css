@@ -175,11 +175,16 @@ button.ghost {
   color: var(--muted);
 }
 .pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px; /* adjust as needed */
   padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--chip);
   font-size: 12px;
+  line-height: 1;
 }
 .kanban {
   display: grid;
