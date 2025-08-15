@@ -34,7 +34,7 @@ const schema = buildSchema(DEV_MODE);
     debounce: 300,
     ignoreKeysPrefix: ['ui'],
     persistFilter: (s) => {
-      const { ui, ...rest } = s;
+      const { _ui, ...rest } = s;
       return rest;
     }
   });
@@ -92,8 +92,8 @@ const schema = buildSchema(DEV_MODE);
   tabs.forEach(t => {
     t.addEventListener('click', () => {
       const tab = t.dataset.tab;
-      const ui = store.get().ui || {};
-      store.set({ ui: { ...ui, activeTab: tab } });
+      const _ui = store.get().ui || {};
+      store.set({ ui: { ..._ui, activeTab: tab } });
     });
     // Keyboard activate on Space/Enter
     t.addEventListener('keydown', (e) => {
