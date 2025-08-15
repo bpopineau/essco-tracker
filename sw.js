@@ -7,10 +7,14 @@ const INDEX   = new URL('./', self.location).href; // SPA fallback target
 
 // Core files to cache for offline fallback
 const CORE = [
-  './',             // index.html
+  './',
   './styles.css',
   './manifest.json',
-  './icon.svg'
+  './icon-wrapper.svg',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-512-maskable.png',
+  './apple-touch-icon.png'
 ];
 
 // ---- Install: precache core + activate immediately

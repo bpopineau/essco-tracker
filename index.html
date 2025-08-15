@@ -1,19 +1,40 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ESSCO Project Tracker</title>
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#6aa0ff">
-<link rel="icon" href="data:,">
-<link rel="stylesheet" href="./styles.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ESSCO Project Tracker</title>
+
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#3a7bff">
+  <meta name="description" content="Offline-capable project, task, and notes manager for ESSCO Electric." />
+
+  <!-- PWA niceties (safe even if iOS ignores some) -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="./favicon-16.png">
+
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
+<noscript>
+  <div class="empty" style="margin:12px">
+    JavaScript is required to run ESSCO Project Tracker.
+  </div>
+</noscript>
+
 <div class="app">
   <aside>
-    <div class="brand">⚡ ESSCO Tracker <span id="saveStatus" class="pill muted">All changes saved</span></div>
-    <div class="search"><input id="search" placeholder="Search projects / client / PM" /></div>
+    <div class="brand">
+      ⚡ ESSCO Tracker
+      <span id="saveStatus" class="pill muted" aria-live="polite" aria-atomic="true">All changes saved</span>
+    </div>
+    <div class="search">
+      <input id="search" placeholder="Search projects / client / PM" autocomplete="off" />
+    </div>
     <div id="projList" class="list"></div>
   </aside>
 
@@ -36,20 +57,24 @@
     </header>
 
     <div class="content">
-      <div class="tabs" role="tablist">
-        <div data-tab="notes" class="tab active" role="tab" aria-selected="true">Notes</div>
-        <div data-tab="tasks" class="tab" role="tab" aria-selected="false">Tasks</div>
-        <div data-tab="insights" class="tab" role="tab" aria-selected="false">Insights</div>
+      <div class="tabs" role="tablist" aria-label="Primary">
+        <div id="tab-notes" data-tab="notes" class="tab active" role="tab" aria-selected="true" aria-controls="panel-notes" tabindex="0">Notes</div>
+        <div id="tab-tasks" data-tab="tasks" class="tab" role="tab" aria-selected="false" aria-controls="panel-tasks" tabindex="-1">Tasks</div>
+        <div id="tab-insights" data-tab="insights" class="tab" role="tab" aria-selected="false" aria-controls="panel-insights" tabindex="-1">Insights</div>
       </div>
 
-      <section id="notes" class="grid"></section>
-      <section id="tasks" class="grid" style="display:none"></section>
-      <section id="insights" class="grid" style="display:none"></section>
+      <section id="panel-notes" role="tabpanel" aria-labelledby="tab-notes" class="grid"></section>
+      <section id="panel-tasks" role="tabpanel" aria-labelledby="tab-tasks" class="grid" style="display:none"></section>
+      <section id="panel-insights" role="tabpanel" aria-labelledby="tab-insights" class="grid" style="display:none"></section>
     </div>
   </main>
 </div>
+
+<!-- Optional: toast root (safe if your toast helper creates its own) -->
+<div id="toast-root" aria-live="polite" aria-atomic="true" style="position:fixed;inset:auto 16px 16px auto;z-index:10000"></div>
 
 <!-- Load the app as an ES module -->
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
+
