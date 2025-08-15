@@ -1,7 +1,7 @@
 // src/main.js
 
 // ---------- Imports ----------
-import { schemaV1 } from './schema.js';
+import { buildSchema } from './schema.js';
 import { storage } from './storage.js';
 import { createStore } from './store.js';
 import { BUILD_VERSION } from './version.js';
@@ -13,11 +13,11 @@ import { mountTasks } from './views/tasks.js';
 
 // ---------- Dev_Mode ----------
 const DEV_MODE = true; // set to false in production
-const STORAGE_KEY = 'essco_tracker_db_v1'; // must match storage.js
+const schema = buildSchema(DEV_MODE);
 
 // ---------- Boot ----------
 (async function main(){
-  const initial = await storage.load(schemaV1);
+  const initial = await storage.load(schema);
   const store = createStore(initial);
 
   // Persist on changes (debounced inside storage.save)
@@ -41,7 +41,7 @@ const STORAGE_KEY = 'essco_tracker_db_v1'; // must match storage.js
     newTaskBtn: document.getElementById('newTaskBtn'),
   }, store);
 
-  // Dev-only: add "Reset Seed" button beside header actions
+  // Dev-only Reset Seed button (you already had this pattern)
   if (DEV_MODE) {
     const actionsRow = document.querySelector('header .row');
     if (actionsRow) {
@@ -51,12 +51,9 @@ const STORAGE_KEY = 'essco_tracker_db_v1'; // must match storage.js
       resetBtn.style.marginLeft = '8px';
       resetBtn.title = 'Clear local data and reload default seed';
       resetBtn.onclick = async () => {
-        const ok = confirm('Reset local data to the default seed? This will clear your current changes.');
-        if (!ok) return;
+        if (!confirm('Reset local data to the default seed? This will clear your current changes.')) return;
         try {
-          // Clear app data
-          localStorage.removeItem(STORAGE_KEY);
-          // Optional: clear SW caches so new assets load cleanly
+          localStorage.removeItem('essco_tracker_db_v1');
           if ('caches' in window) {
             const keys = await caches.keys();
             await Promise.all(keys.filter(k => k.startsWith('essco-cache-')).map(k => caches.delete(k)));
@@ -105,6 +102,6 @@ const STORAGE_KEY = 'essco_tracker_db_v1'; // must match storage.js
       refreshing = true;
       location.reload();
     });
-    console.log('ESSCO build', BUILD_VERSION);
+    console.log('ESSCO build', BUILD_VERSION, 'DEV_MODE:', DEV_MODE ? 'dev' : 'prod');
   }
 })();
