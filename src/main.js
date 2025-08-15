@@ -137,13 +137,13 @@ const schema = buildSchema(DEV_MODE);
   }
 
   // Single subscription
-  store.subscribe((state, keys) => {
+  _store.subscribe((state, keys) => {
     if (keys.includes('ui')) updateTabsAndPanels(state);
   });
 
   // Initial render
-  store.emit();
-  updateTabsAndPanels(store.get());
+  _store.emit();
+  updateTabsAndPanels(_store.get());
 
   // Service worker: versioned register + toast-based update prompt
   if ('serviceWorker' in navigator) {
