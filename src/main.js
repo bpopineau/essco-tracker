@@ -11,6 +11,10 @@ import { mountNotes } from './views/notes.js';
 import { mountSidebar } from './views/sidebar.js';
 import { mountTasks } from './views/tasks.js';
 
+// ---------- Dev_Mode ----------
+const DEV_MODE = true; // set to false in production
+const STORAGE_KEY = 'essco_tracker_db_v1'; // must match storage.js
+
 // ---------- Boot ----------
 (async function main(){
   const initial = await storage.load(schemaV1);
@@ -36,6 +40,34 @@ import { mountTasks } from './views/tasks.js';
     newNoteBtn: document.getElementById('newNoteBtn'),
     newTaskBtn: document.getElementById('newTaskBtn'),
   }, store);
+
+  // Dev-only: add "Reset Seed" button beside header actions
+  if (DEV_MODE) {
+    const actionsRow = document.querySelector('header .row');
+    if (actionsRow) {
+      const resetBtn = document.createElement('button');
+      resetBtn.className = 'ghost';
+      resetBtn.textContent = 'Reset Seed';
+      resetBtn.style.marginLeft = '8px';
+      resetBtn.title = 'Clear local data and reload default seed';
+      resetBtn.onclick = async () => {
+        const ok = confirm('Reset local data to the default seed? This will clear your current changes.');
+        if (!ok) return;
+        try {
+          // Clear app data
+          localStorage.removeItem(STORAGE_KEY);
+          // Optional: clear SW caches so new assets load cleanly
+          if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.filter(k => k.startsWith('essco-cache-')).map(k => caches.delete(k)));
+          }
+        } finally {
+          location.reload();
+        }
+      };
+      actionsRow.appendChild(resetBtn);
+    }
+  }
 
   // Views
   mountNotes(document.getElementById('notes'), store);
