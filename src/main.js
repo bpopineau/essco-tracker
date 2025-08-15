@@ -12,7 +12,7 @@ import { mountSidebar } from './views/sidebar.js';
 import { mountTasks } from './views/tasks.js';
 
 // ---------- Dev_Mode ----------
-const DEV_MODE = false; // set to false in production
+const DEV_MODE = true; // set to false in production
 const schema = buildSchema(DEV_MODE);
 
 // ---------- Boot ----------
