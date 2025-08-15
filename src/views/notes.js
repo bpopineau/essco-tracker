@@ -172,31 +172,31 @@ export function mountNotes(root, store){
   }
 
   /* ---------- edit helpers ---------- */
-  function startEdit(note, trigger){
+  function startEdit(note, _trigger){
     const ui = store.get().ui || {};
     store.set({ ui: { ...ui, editingNoteId: note.id } });
   }
 
-  function cancelEdit(trigger){
+  function cancelEdit(_trigger){
     const ui = store.get().ui || {};
     store.set({ ui: { ...ui, editingNoteId: null } });
-    if (trigger && typeof trigger.focus === 'function') setTimeout(()=>trigger.focus(), 0);
+    if (_trigger && typeof _trigger.focus === 'function') setTimeout(()=>_trigger.focus(), 0);
     toast('Edit cancelled', { type:'warn' });
   }
 
-  function commitEdit(text, note, trigger){
+  function commitEdit(text, note, _trigger){
     const val = (text || '').trim();
     store.update(s=>({
       notes: s.notes.map(n => n.id === note.id ? { ...n, body: val } : n),
       ui: { ...s.ui, editingNoteId: null }
     }));
-    if (trigger && typeof trigger.focus === 'function') setTimeout(()=>trigger.focus(), 0);
+    if (_trigger && typeof _trigger.focus === 'function') setTimeout(()=>_trigger.focus(), 0);
     toast('Note updated', { type:'success' });
   }
 
   /* ---------- other helpers ---------- */
   function deleteNote(note){
-    const s = store.get();
+    const _s = store.get();
     store.update(st => ({
       notes: st.notes.filter(n => n.id !== note.id),
       ui: { ...st.ui, editingNoteId: st.ui.editingNoteId === note.id ? null : st.ui.editingNoteId }
