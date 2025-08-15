@@ -1,7 +1,6 @@
-
 // src/views/tasks.js
-import { clear, el } from '../ui/dom.js';
-import { daysUntil, fmtDate } from '../utils/date.js';
+import { clear, el, highlightText, toast } from '../ui/dom.js';
+import { daysUntil, fmtDate, formatRelative } from '../utils/date.js';
 
 // Matches other parts of the app
 const STATUS = ['backlog','in_progress','blocked','done'];
@@ -36,117 +35,201 @@ export function mountTasks(root, store){
     return tf;
   };
 
-  // --- Attachments: local file linking (re-uses fileDB global created in index.html) ---
+  // --- Attachments helpers (use global fileDB if present) ---
   const attCount = (t)=> (t.attachments?.length || 0);
-
-  async function ensurePermission(handle){
-    if (!handle) return false;
-    const q = await handle.queryPermission?.({ mode:'read' });
-    if (q === 'granted') return true;
-    const r = await handle.requestPermission?.({ mode:'read' });
-    return r === 'granted';
-  }
+  const hasFileDB = () => typeof window !== 'undefined' && !!window.fileDB;
 
   async function pickAndAttach(taskId){
-    if (!window.showOpenFilePicker){
-      alert('Your browser does not support local file linking. Use Chrome/Edge on desktop.');
+    if (!hasFileDB() || !window.showOpenFilePicker){
+      toast('Local file linking not supported here. Try Chrome/Edge on desktop.', { type:'warn' });
       return;
     }
-    const picks = await showOpenFilePicker({ multiple:true });
-    const newMetas = [];
-    for (const h of picks){
-      const id = await fileDB.putHandle(h);
-      newMetas.push({ id, name: h.name, kind: h.kind || 'file' });
+    try{
+      const picks = await showOpenFilePicker({ multiple:true });
+      const newMetas = [];
+      for (const h of picks){
+        const id = await fileDB.putHandle(h);
+        newMetas.push({ id, name: h.name, kind: h.kind || 'file' });
+      }
+      store.update(s=>({
+        tasks: s.tasks.map(t => t.id===taskId ? { ...t, attachments: [...(t.attachments||[]), ...newMetas] } : t)
+      }));
+      toast(`${newMetas.length} file${newMetas.length>1?'s':''} attached`, { type:'success' });
+    }catch(err){
+      // user cancelled or error
     }
-    store.update(s=>({
-      ...s,
-      tasks: s.tasks.map(t => t.id===taskId ? { ...t, attachments: [...(t.attachments||[]), ...newMetas] } : t)
-    }));
   }
 
   async function openAttachment(att){
-    const handle = await fileDB.getHandle(att.id);
-    if (!handle){ alert('Missing handle. Re-link this attachment.'); return; }
-    const ok = await ensurePermission(handle);
-    if (!ok){ alert('Permission denied. Re-link or grant access.'); return; }
-    const file = await handle.getFile();
+    if (!hasFileDB()){
+      toast('Attachments unavailable in this browser.', { type:'warn' });
+      return;
+    }
+    const file = await fileDB.getFile(att.id);
+    if (!file){
+      const meta = await fileDB.getMeta(att.id);
+      if (meta?.stale) {
+        toast('This file needs to be relinked.', { type:'warn', action:{ label:'Relink', onClick: async () => {
+          const m = await fileDB.relink(att.id);
+          toast(m ? 'Relinked' : 'Relink cancelled', { type: m ? 'success' : 'warn' });
+        }}});
+      } else {
+        toast('Missing or denied permission to open file.', { type:'error' });
+      }
+      return;
+    }
     const url = URL.createObjectURL(file);
     window.open(url, '_blank');
     setTimeout(()=> URL.revokeObjectURL(url), 10_000);
   }
 
   async function removeAttachment(taskId, att){
-    await fileDB.delHandle(att.id).catch(()=>{});
+    // Remove from task first; leave underlying IDB record removal best-effort
     store.update(s=>({
-      ...s,
       tasks: s.tasks.map(t => t.id===taskId ? { ...t, attachments: (t.attachments||[]).filter(a=>a.id!==att.id) } : t)
     }));
+    if (hasFileDB()){
+      try{ await fileDB.delHandle(att.id); }catch{}
+    }
+    toast('Attachment removed', { type:'success' });
   }
 
-  function openAttachmentModal(taskId){
+  function openAttachmentModal(taskId, triggerBtn){
     const t = store.get().tasks.find(x=>x.id===taskId);
     const modal = el('div', { className:'modal' });
-    const panel = el('div', { className:'panel' });
+    const panel = el('div', { className:'panel', role:'dialog', ariaModal:'true' });
+    const headingId = makeId('att_');
     const head = el('div', { className:'row' });
     head.append(
-      el('h3', { textContent: 'Attachments' }),
-      el('button', { className:'ghost', textContent:'×', onclick:()=>modal.remove() })
+      el('h3', { id: headingId, textContent: 'Attachments' }),
+      el('button', { className:'btn-icon', title:'Close', 'aria-label':'Close', onclick:()=>closeModal() }, '×')
     );
+    panel.setAttribute('aria-labelledby', headingId);
+
     const list = el('div', { className:'att-list' });
 
-    function renderList(){
-      list.innerHTML='';
-      (t.attachments||[]).forEach(att=>{
-        const row = el('div', { className:'att-item' });
-        row.append(
-          el('div', { className:'name', textContent: att.name }),
-          el('div', {}, [
-            el('button', { className:'ghost', textContent:'Open', onclick:()=>openAttachment(att) }),
-            el('button', { className:'ghost', textContent:'Remove', onclick:()=>{ removeAttachment(t.id, att); row.remove(); } })
-          ])
-        );
-        list.appendChild(row);
-      });
-      if (!(t.attachments||[]).length){
+    async function renderList(){
+      list.replaceChildren();
+      const items = (t.attachments||[]);
+      if (!items.length){
         list.append(el('div', { className:'empty', textContent:'No attachments yet.' }));
+        return;
+      }
+      for (const att of items){
+        const meta = hasFileDB() ? (await fileDB.getMeta(att.id)) : { name: att.name, kind: att.kind, stale: true };
+        const row = el('div', { className:'att-item' });
+        const left = el('div', { className:'name' });
+
+        // Name + metadata chips
+        left.append(
+          el('span', { textContent: meta?.name || att.name })
+        );
+        const chips = el('div', { className:'row' });
+        if (meta?.type) chips.append(el('span', { className:'pill', textContent: meta.type }));
+        if (Number.isFinite(meta?.size)) chips.append(el('span', { className:'pill', textContent: humanFileSize(meta.size) }));
+        if (meta?.lastModified) chips.append(el('span', { className:'pill', textContent: new Date(meta.lastModified).toLocaleDateString() }));
+        if (chips.childNodes.length) left.append(chips);
+
+        const right = el('div', { className:'row' });
+        right.append(
+          el('button', { className:'ghost', title:'Open', onclick:()=>openAttachment(att) }, 'Open'),
+          ...(meta?.stale ? [el('button', { className:'ghost', title:'Relink', onclick:async ()=>{
+            const rel = await fileDB.relink(att.id);
+            if (rel) { await renderList(); toast('Relinked', { type:'success' }); }
+            else toast('Relink cancelled', { type:'warn' });
+          } }, 'Relink')] : []),
+          el('button', { className:'ghost', title:'Remove', onclick:()=>{ removeAttachment(t.id, att); renderList(); } }, 'Remove')
+        );
+
+        row.append(left, right);
+        list.appendChild(row);
       }
     }
 
     const actions = el('div', { className:'row', style:'margin-top:10px' });
     actions.append(
-      el('button', { className:'primary', textContent:'Add files', onclick:()=>pickAndAttach(taskId).then(renderList) }),
-      el('button', { className:'ghost', textContent:'Close', onclick:()=>modal.remove() })
+      el('button', { className:'primary', title:'Add files', onclick:()=>pickAndAttach(taskId).then(renderList) }, 'Add files'),
+      el('button', { className:'ghost', title:'Close', onclick:()=>closeModal() }, 'Close')
     );
 
     panel.append(head, list, actions);
     modal.append(panel);
     document.body.appendChild(modal);
+
+    // Focus management (trap + restore)
+    const prevFocus = document.activeElement;
+    const focusables = () => Array.from(panel.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+      .filter(el => !el.hasAttribute('disabled'));
+    (focusables()[0] || panel).focus();
+
+    function onKey(e){
+      if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
+      if (e.key === 'Tab'){
+        const els = focusables();
+        if (!els.length) return;
+        const idx = els.indexOf(document.activeElement);
+        let next = idx + (e.shiftKey ? -1 : 1);
+        if (next < 0) next = els.length - 1;
+        if (next >= els.length) next = 0;
+        els[next].focus();
+        e.preventDefault();
+      }
+    }
+    modal.addEventListener('keydown', onKey);
+
+    function closeModal(){
+      modal.removeEventListener('keydown', onKey);
+      modal.remove();
+      if (prevFocus && typeof prevFocus.focus === 'function') prevFocus.focus();
+    }
+
     renderList();
   }
 
   // --- UI bits shared by Kanban & Table ---
-  function badge(text, cls){ const s = el('span', { className:`pill ${cls||''}` }); s.textContent = text; return s; }
+  function badge(text, cls){
+    const s = el('span', { className:`pill ${cls||''}` });
+    s.textContent = text; return s;
+  }
 
-  function taskCard(t){
+  function taskCard(t, searchTerm){
     const u = getUser(t.assignee_user_id);
     const du = t.due_date ? daysUntil(t.due_date) : NaN;
     let chip='chip-ok', tip='OK';
     if (!Number.isNaN(du) && du < 0){ chip='chip-bad'; tip='Overdue'; }
     else if (!Number.isNaN(du) && du <= 3){ chip='chip-warn'; tip='Due soon'; }
+
     const card = el('div', { className:'task', draggable:true, id:t.id });
-    card.innerHTML = `
-      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
-        <div>${t.title}</div>
-        <button class="ghost" title="Attachments" style="padding:4px 8px" data-att-btn>📎 ${attCount(t)}</button>
-      </div>
-      <div class="meta">
-        <span class="pill assignee">${u?u.name:'Unassigned'}</span>
-        <span class="pill prio">P: ${t.priority}</span>
-        <span class="pill due ${chip}" title="${tip}">${t.due_date?fmtDate(t.due_date):'No due'}</span>
-        ${t.note_id?`<span class="pill">Note ${t.note_id}</span>`:''}
-      </div>`;
+    const top = el('div', { style:'display:flex;justify-content:space-between;gap:8px;align-items:center' });
+
+    const title = el('div', { });
+    title.textContent = t.title;
+    if (searchTerm) highlightText(title, searchTerm);
+
+    const attBtn = el('button', {
+      className:'btn-icon ghost',
+      title:`Attachments (${attCount(t)})`,
+      'aria-label':'Attachments',
+      dataset:{ attBtn:'' },
+      onclick: (e)=> openAttachmentModal(t.id, e.currentTarget)
+    }, '📎');
+
+    top.append(title, attBtn);
+
+    const meta = el('div', { className:'meta' });
+    meta.append(
+      el('span', { className:'pill assignee', textContent: u?u.name:'Unassigned' }),
+      el('span', { className:'pill prio', textContent: `P: ${t.priority}` }),
+      el('span', {
+        className:`pill due ${chip}`,
+        title: t.due_date ? fmtDate(t.due_date) : 'No due',
+        ariaLabel:`Status: ${tip}`
+      }, t.due_date ? formatRelative(t.due_date) : 'No due'),
+      ...(t.note_id ? [el('span', { className:'pill', textContent:`Note ${t.note_id}` })] : [])
+    );
+
+    card.append(top, meta);
     card.addEventListener('dragstart', ev=>{ ev.dataTransfer.setData('text/plain', t.id); });
-    card.querySelector('[data-att-btn]').addEventListener('click', ()=> openAttachmentModal(t.id));
     return card;
   }
 
@@ -176,7 +259,7 @@ export function mountTasks(root, store){
     const soon = openAll.filter(t=>{ const du=daysUntil(t.due_date); return du>=0 && du<=3; }).length;
     summary.append(badge(`Overdue: ${overdue}`, 'chip-bad'), badge(`Due ≤3d: ${soon}`, 'chip-warn'), badge(`Open: ${openAll.length}`, ''));
 
-    // Filters row (table-focused but present for both)
+    // Filters row
     const filterBar = el('div', { className:'row', style:'gap:8px;margin-top:-6px' });
     const fAssignee = el('select', { title:'Assignee' });
     fAssignee.appendChild(el('option', { value:'all', textContent:'All assignees' }));
@@ -223,13 +306,13 @@ export function mountTasks(root, store){
     };
 
     // Kanban
-    const kanban = el('div', { id:'kanban', className:'kanban', style: viewMode==='kanban'?'grid':'display:none' });
+    const kanban = el('div', { id:'kanban', className:'kanban', style: viewMode==='kanban' ? '' : 'display:none' });
     STATUS.forEach(st=>{
       const col = el('div', { className:'col' });
       col.append(el('h4', { textContent: st.replace('_',' ').replace(/^./,c=>c.toUpperCase()) }));
       const drop = el('div', { className:'drop' }); drop.dataset.status = st;
       const list = projectTasks(pid).filter(t=>t.status===st).filter(matchesFilters);
-      list.forEach(t=> drop.appendChild(taskCard(t)));
+      list.forEach(t=> drop.appendChild(taskCard(t, filters.search)));
       col.append(drop); kanban.append(col);
     });
     root.append(kanban);
@@ -237,19 +320,18 @@ export function mountTasks(root, store){
     // Kanban DnD delegation
     if (viewMode==='kanban'){
       const board = kanban;
-      board.addEventListener('dragenter', (ev)=>{ const drop = ev.target.closest('.drop'); if (drop) drop.classList.add('is-over'); });
-      board.addEventListener('dragleave', (ev)=>{ const drop = ev.target.closest('.drop'); if (drop) drop.classList.remove('is-over'); });
+      board.addEventListener('dragenter', (ev)=>{ const d = ev.target.closest('.drop'); if (d) d.classList.add('is-over'); });
+      board.addEventListener('dragleave', (ev)=>{ const d = ev.target.closest('.drop'); if (d) d.classList.remove('is-over'); });
       board.addEventListener('dragover', (ev)=>{ if (ev.target.closest('.drop')) ev.preventDefault(); });
       board.addEventListener('drop', (ev)=>{ const drop = ev.target.closest('.drop'); if (!drop) return;
         ev.preventDefault();
         const id = ev.dataTransfer.getData('text/plain');
         const s = store.get();
         const t = s.tasks.find(x=>x.id===id); if (!t) return;
-        const moved = { ...t, status: drop.dataset.status };
-        const nextTasks = s.tasks.map(x=>x.id===id? moved : x);
-        store.update(()=>({ ...s, tasks: nextTasks }));
+        if (t.status === drop.dataset.status) return;
+        store.update((_s)=>({ tasks: s.tasks.map(x=>x.id===id? { ...x, status: drop.dataset.status } : x) }));
         drop.classList.remove('is-over');
-      }, { once:true });
+      });
     }
 
     // Table
@@ -288,16 +370,17 @@ export function mountTasks(root, store){
         const u = getUser(t.assignee_user_id);
         const tr = el('tr');
 
-        const titleTd = el('td');
+        const titleTd = el('td', { title: t.title });
         titleTd.textContent = t.title;
+        if (filters.search) highlightText(titleTd, filters.search);
         tr.appendChild(titleTd);
 
         const assTd = el('td');
         assTd.textContent = u?u.name:'—';
         tr.appendChild(assTd);
 
-        const dueTd = el('td');
-        dueTd.textContent = t.due_date ? fmtDate(t.due_date) : '—';
+        const dueTd = el('td', { title: t.due_date ? fmtDate(t.due_date) : '' });
+        dueTd.textContent = t.due_date ? formatRelative(t.due_date) : '—';
         tr.appendChild(dueTd);
 
         const priTd = el('td');
@@ -311,10 +394,7 @@ export function mountTasks(root, store){
         stSel.value = t.status;
         stSel.onchange = ()=> {
           const nv = stSel.value;
-          store.update(s=>({
-            ...s,
-            tasks: s.tasks.map(x=> x.id===t.id ? { ...x, status:nv } : x)
-          }));
+          store.update(s=>({ tasks: s.tasks.map(x=> x.id===t.id ? { ...x, status:nv } : x) }));
         };
         stTd.appendChild(stSel);
         tr.appendChild(stTd);
@@ -325,9 +405,8 @@ export function mountTasks(root, store){
 
         // Attachments action (button only)
         const filesTd = el('td');
-        const attBtn = el('button', { className:'ghost', title:'Attachments', style:'padding:4px 8px' });
-        attBtn.textContent = `📎 ${attCount(t)}`;
-        attBtn.onclick = ()=> openAttachmentModal(t.id);
+        const attBtn = el('button', { className:'btn-icon ghost', title:`Attachments (${attCount(t)})`, 'aria-label':'Attachments' }, '📎');
+        attBtn.onclick = (e)=> openAttachmentModal(t.id, e.currentTarget);
         filesTd.appendChild(attBtn);
         tr.appendChild(filesTd);
 
@@ -336,35 +415,33 @@ export function mountTasks(root, store){
 
       const dueHeader = tableWrap.querySelector('#sortDue');
       dueHeader.onclick = ()=>{
-        const ui = store.get().ui;
+        const ui = store.get().ui || {};
         store.set({ ui: { ...ui, sortDueAsc: !ui.sortDueAsc } });
       };
     }
 
     // View toggles
-    const ui = store.get().ui;
+    const ui = store.get().ui || {};
     root.querySelector('#viewKanban').onclick = ()=> store.set({ ui: { ...ui, viewMode: 'kanban' } });
     root.querySelector('#viewTable').onclick = ()=> store.set({ ui: { ...ui, viewMode: 'table' } });
 
     // Filter interactions
     const pushFilters = ()=>{
-      const ui2 = store.get().ui;
+      const ui2 = store.get().ui || {};
       store.set({ ui: { ...ui2, taskFilters: {
         assignee: fAssignee.value,
         status: fStatus.value,
         priority: fPriority.value,
         due: fDue.value,
         search: fSearch.value.trim()
-      }}});
+      } }});
     };
 
     fAssignee.onchange = pushFilters;
     fStatus.onchange   = pushFilters;
     fPriority.onchange = pushFilters;
     fDue.onchange      = pushFilters;
-    fSearch.oninput    = ()=> { // mild debounce not necessary here; render is cheap
-      pushFilters();
-    };
+    fSearch.oninput    = ()=> { pushFilters(); };
     fClear.onclick     = ()=>{
       fAssignee.value='all';
       fStatus.value='all';
@@ -382,4 +459,16 @@ export function mountTasks(root, store){
 
   // initial paint
   render();
+}
+
+/* ---------- small utils ---------- */
+
+function humanFileSize(bytes){
+  if (!Number.isFinite(bytes)) return '';
+  const thresh = 1024;
+  if (Math.abs(bytes) < thresh) return bytes + ' B';
+  const units = ['KB','MB','GB','TB'];
+  let u = -1;
+  do { bytes /= thresh; ++u; } while (Math.abs(bytes) >= thresh && u < units.length - 1);
+  return bytes.toFixed(1) + ' ' + units[u];
 }

@@ -1,6 +1,6 @@
-
 // src/views/header.js
 import { storage } from '../storage.js';
+import { el, toast } from '../ui/dom.js';
 import { fmtDate } from '../utils/date.js';
 
 export function mountHeader(refs, store){
@@ -9,17 +9,43 @@ export function mountHeader(refs, store){
   const getUser    = (id)=> store.get().users.find(u=>u.id===id);
   const getProject = ()=> store.get().projects.find(p=>p.id===store.get().ui.selectedProjectId);
 
+  // Ensure a save-status slot exists for storage.js feedback
+  let saveStatus = document.getElementById('saveStatus');
+  if (!saveStatus) {
+    const headerEl = projTitleEl.closest('header') || document.querySelector('header');
+    if (headerEl) {
+      const statusSlot = el('small', { id:'saveStatus', className:'muted', style:'margin-left:auto' });
+      headerEl.appendChild(statusSlot);
+      saveStatus = statusSlot;
+    }
+  }
+
+  // Attachments capability banner (informational only)
+  const headerEl = projTitleEl.closest('header') || document.querySelector('header');
+  if (headerEl && !document.getElementById('attBanner')) {
+    const supported = !!(window.fileDB && window.fileDB.available && window.fileDB.available());
+    if (!supported) {
+      const banner = el('div', {
+        id:'attBanner',
+        className:'badge',
+        style:'margin:8px 16px 0 auto; display:inline-flex; align-items:center; gap:8px'
+      }, ['ℹ️ Full attachments work best in Chrome/Edge on desktop']);
+      headerEl.appendChild(banner);
+    }
+  }
+
   // Add a "Delete Project…" button to the header actions row
-  const actionsRow = document.querySelector('header .row');
-  let delBtn = actionsRow.querySelector('#btnDeleteProject');
-  if (!delBtn){
-    delBtn = document.createElement('button');
-    delBtn.id = 'btnDeleteProject';
-    delBtn.className = 'ghost';
-    delBtn.textContent = 'Delete Project…';
-    delBtn.style.marginLeft = '8px';
+  const actionsRow = document.querySelector('header .row') || headerEl;
+  let delBtn = actionsRow?.querySelector('#btnDeleteProject');
+  if (actionsRow && !delBtn){
+    delBtn = el('button', {
+      id:'btnDeleteProject',
+      className:'ghost',
+      textContent:'Delete Project…',
+      style:'margin-left:8px'
+    });
     actionsRow.appendChild(delBtn);
-    delBtn.addEventListener('click', ()=> openDeleteProjectModal(store));
+    delBtn.addEventListener('click', ()=> openDeleteProjectModal(store, delBtn));
   }
 
   function render(){
@@ -28,14 +54,19 @@ export function mountHeader(refs, store){
     projMetaEl.textContent  = `Client: ${p.client} • PM: ${getUser(p.pm_user_id)?.name||'—'} • Started: ${p.start_date?fmtDate(p.start_date):'—'}`;
     statusBadgeEl.textContent = p.status;
     statusBadgeEl.style.borderColor = p.status==='active' ? '#345' : '#444';
-    delBtn.disabled = !p; // nothing selected
+    if (delBtn) delBtn.disabled = !p;
   }
 
-  exportBtn.addEventListener('click', ()=> storage.exportJSON(store.get()));
+  // Export current snapshot
+  exportBtn.addEventListener('click', ()=>{
+    storage.exportJSON(store.get());
+    toast('Export started', { type:'success' });
+  });
+
+  // Import with merge/replace confirm
   importInput.addEventListener('change', async (e)=>{
     const file = e.target.files?.[0]; if (!file) return;
-    const merged = await storage.importJSON(file);
-    store.update(()=>merged);
+    openImportModal(file, store, importInput);
   });
 
   newTaskBtn.addEventListener('click', ()=>{
@@ -52,60 +83,154 @@ export function mountHeader(refs, store){
   render();
 }
 
-function openDeleteProjectModal(store){
+/* ---------------- Import Modal (merge vs replace) ---------------- */
+function openImportModal(file, store, inputEl){
+  const modal = el('div', { className:'modal' });
+  const panel = el('div', { className:'panel', role:'dialog', ariaModal:'true' });
+
+  const headingId = 'imp_' + Math.random().toString(36).slice(2,8);
+  const head = el('div', { className:'row' });
+  head.append(
+    el('h3', { id: headingId, textContent:'Import Data' }),
+    el('button', { className:'btn-icon', title:'Close', 'aria-label':'Close', onclick:()=>closeModal() }, '×')
+  );
+  panel.setAttribute('aria-labelledby', headingId);
+
+  const name = file.name || 'backup.json';
+  const body = el('div', { className:'grid', style:'gap:8px;margin-top:8px' });
+
+  const mergeId = 'opt_merge_' + Math.random().toString(36).slice(2,6);
+  const replId  = 'opt_repl_'  + Math.random().toString(36).slice(2,6);
+
+  body.append(
+    el('div', { className:'muted' }, `Choose how to apply “${name}”.`),
+    el('label', { className:'row', style:'gap:8px;align-items:center' }, [
+      el('input', { type:'radio', name:'impMode', id: mergeId, value:'merge', checked:true }),
+      el('div', {}, [
+        el('strong', { textContent:'Merge (recommended)' }),
+        el('div', { className:'muted' }, 'Keep your current data, overwrite conflicts from the file.')
+      ])
+    ]),
+    el('label', { className:'row', style:'gap:8px;align-items:center' }, [
+      el('input', { type:'radio', name:'impMode', id: replId, value:'replace' }),
+      el('div', {}, [
+        el('strong', { textContent:'Replace (wipe current)' }),
+        el('div', { className:'muted' }, 'Completely replace current data with the file contents.')
+      ])
+    ])
+  );
+
+  const actions = el('div', { className:'row', style:'margin-top:10px;justify-content:flex-end' });
+  const cancel = el('button', { className:'ghost', textContent:'Cancel', onclick:()=>closeModal() });
+  const ok  = el('button', { className:'primary', textContent:'Import' });
+  actions.append(cancel, ok);
+
+  panel.append(head, body, actions);
+  modal.append(panel);
+  document.body.appendChild(modal);
+
+  ok.onclick = async ()=>{
+    const mode = panel.querySelector('input[name="impMode"]:checked')?.value || 'merge';
+    try{
+      const merged = await storage.importJSON(file, { strategy: mode });
+      // Replace entire state in one emit (stable for views)
+      if (typeof store.replace === 'function') store.replace(merged);
+      else store.update(()=>merged);
+      toast(`Import complete (${mode})`, { type:'success' });
+    }catch(err){
+      toast('Import failed', { type:'error' });
+      // eslint-disable-next-line no-console
+      console.error('[header] import error:', err);
+    }finally{
+      if (inputEl) inputEl.value = '';
+      closeModal();
+    }
+  };
+
+  // Focus trap + Escape
+  const prev = document.activeElement;
+  const focusables = () => Array.from(panel.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+    .filter(el => !el.hasAttribute('disabled'));
+  (focusables()[0] || panel).focus();
+
+  function onKey(e){
+    if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
+    if (e.key === 'Enter' && e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) {
+      e.preventDefault(); ok.click();
+    }
+    if (e.key === 'Tab'){
+      const els = focusables(); if (!els.length) return;
+      const idx = els.indexOf(document.activeElement);
+      let next = idx + (e.shiftKey ? -1 : 1);
+      if (next < 0) next = els.length - 1;
+      if (next >= els.length) next = 0;
+      els[next].focus();
+      e.preventDefault();
+    }
+  }
+  modal.addEventListener('keydown', onKey);
+
+  function closeModal(){
+    modal.removeEventListener('keydown', onKey);
+    modal.remove();
+    if (prev && typeof prev.focus === 'function') prev.focus();
+  }
+}
+
+/* ---------------- Delete Project Modal (with Undo) ---------------- */
+function openDeleteProjectModal(store, triggerBtn){
   const state = store.get();
   const pid = state.ui.selectedProjectId;
   const proj = state.projects.find(p=>p.id===pid);
-  if (!proj) { alert('No project selected.'); return; }
+  if (!proj) { toast('No project selected.', { type:'error' }); return; }
 
   const tasks = state.tasks.filter(t=>t.project_id===pid);
   const notes = state.notes.filter(n=>n.project_id===pid);
 
-  const modal = document.createElement('div');
-  modal.className = 'modal';
-  const panel = document.createElement('div');
-  panel.className = 'panel';
+  const modal = el('div', { className:'modal' });
+  const panel = el('div', { className:'panel', role:'dialog', ariaModal:'true' });
 
-  const head = document.createElement('div');
-  head.className = 'row';
-  const h3 = document.createElement('h3'); h3.textContent = 'Delete Project';
-  const close = document.createElement('button'); close.className = 'ghost'; close.textContent = '×';
-  close.onclick = ()=> modal.remove();
-  head.append(h3, close);
+  const headingId = 'del_' + Math.random().toString(36).slice(2,8);
+  const head = el('div', { className:'row' });
+  head.append(
+    el('h3', { id: headingId, textContent: 'Delete Project' }),
+    el('button', { className:'btn-icon', title:'Close', 'aria-label':'Close', onclick:()=>closeModal() }, '×')
+  );
+  panel.setAttribute('aria-labelledby', headingId);
 
-  const body = document.createElement('div');
-  body.style.marginTop = '8px';
-  body.innerHTML = `
-    <div class="muted" style="margin-bottom:8px">
-      You are about to remove <strong>${proj.job_number} — ${proj.name}</strong>.
-    </div>
-    <div class="grid" style="gap:6px">
-      <div><span class="pill">Tasks: ${tasks.length}</span> <span class="pill">Notes: ${notes.length}</span></div>
-      <label class="muted">Type the job number to confirm: <strong>${proj.job_number}</strong></label>
-      <input id="confirmStr" placeholder="Job number" />
-    </div>
-  `;
+  const body = el('div', { style:'margin-top:8px' });
+  body.append(
+    el('div', { className:'muted', style:'margin-bottom:8px' }, [
+      'You are about to remove ',
+      el('strong', { textContent: `${proj.job_number} — ${proj.name}` }),
+      '.'
+    ]),
+    el('div', { className:'grid', style:'gap:6px' }, [
+      el('div', {}, [
+        el('span', { className:'pill', textContent:`Tasks: ${tasks.length}` }),
+        document.createTextNode(' '),
+        el('span', { className:'pill', textContent:`Notes: ${notes.length}` })
+      ]),
+      el('label', { className:'muted' }, [
+        'Type the job number to confirm: ',
+        el('strong', { textContent: proj.job_number })
+      ]),
+      el('input', { id:'confirmStr', placeholder:'Job number' })
+    ])
+  );
 
-  const actions = document.createElement('div');
-  actions.className = 'row';
-  actions.style.marginTop = '10px';
-  actions.style.justifyContent = 'space-between';
+  const actions = el('div', { className:'row', style:'margin-top:10px;justify-content:space-between' });
 
-  const archiveBtn = document.createElement('button');
-  archiveBtn.className = 'ghost';
-  archiveBtn.textContent = 'Archive instead';
+  const archiveBtn = el('button', { className:'ghost' }, 'Archive instead');
   archiveBtn.onclick = ()=>{
-    store.update(s=>({ ...s, projects: s.projects.map(p=>p.id===pid? { ...p, status:'archived' } : p) }));
-    modal.remove();
+    store.update(s=>({ projects: s.projects.map(p=>p.id===pid? { ...p, status:'archived' } : p) }));
+    closeModal();
+    toast('Project archived', { type:'success' });
   };
 
-  const right = document.createElement('div');
-  right.className = 'row';
-  const cancel = document.createElement('button'); cancel.className = 'ghost'; cancel.textContent = 'Cancel';
-  cancel.onclick = ()=> modal.remove();
-  const del = document.createElement('button'); del.className = 'primary'; del.textContent = 'Delete';
-  del.disabled = true;
-
+  const right = el('div', { className:'row' });
+  const cancel = el('button', { className:'ghost', textContent:'Cancel', onclick:()=>closeModal() });
+  const del = el('button', { className:'primary', textContent:'Delete', disabled:true });
   right.append(cancel, del);
   actions.append(archiveBtn, right);
 
@@ -114,23 +239,76 @@ function openDeleteProjectModal(store){
   document.body.appendChild(modal);
 
   const input = body.querySelector('#confirmStr');
-  input.addEventListener('input', ()=>{
-    del.disabled = input.value.trim() !== proj.job_number;
-  });
+  input.addEventListener('input', ()=>{ del.disabled = input.value.trim() !== proj.job_number; });
 
   del.onclick = ()=>{
+    // Capture snapshot for undo
+    const snapshot = store.get();
+    const toRestore = {
+      project: proj,
+      tasks: snapshot.tasks.filter(t=>t.project_id===pid),
+      notes: snapshot.notes.filter(n=>n.project_id===pid),
+      wasSelected: snapshot.ui.selectedProjectId === pid
+    };
+
     // hard delete: project + all related tasks/notes
     store.update(s=>{
       const others = s.projects.filter(p=>p.id !== pid);
       const nextSelected = others[0]?.id || null;
       return {
-        ...s,
         projects: others,
         tasks: s.tasks.filter(t=>t.project_id !== pid),
         notes: s.notes.filter(n=>n.project_id !== pid),
         ui: { ...s.ui, selectedProjectId: nextSelected || s.ui.selectedProjectId }
       };
     });
-    modal.remove();
+    closeModal();
+
+    // Offer Undo via toast
+    toast(`Deleted project ${proj.job_number} — ${proj.name}`, {
+      type:'warn',
+      action: {
+        label:'Undo',
+        onClick: ()=>{
+          const cur = store.get();
+          store.update(s=>({
+            projects: [toRestore.project, ...s.projects],
+            tasks: [...s.tasks, ...toRestore.tasks],
+            notes: [...s.notes, ...toRestore.notes],
+            ui: { ...s.ui, selectedProjectId: toRestore.wasSelected ? toRestore.project.id : s.ui.selectedProjectId }
+          }));
+          toast('Restored', { type:'success' });
+        }
+      }
+    });
   };
+
+  // Focus trap + Escape
+  const prev = document.activeElement;
+  const focusables = () => Array.from(panel.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+    .filter(el => !el.hasAttribute('disabled'));
+  (focusables()[0] || panel).focus();
+
+  function onKey(e){
+    if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
+    if (e.key === 'Enter' && e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) {
+      e.preventDefault(); del.click();
+    }
+    if (e.key === 'Tab'){
+      const els = focusables(); if (!els.length) return;
+      const idx = els.indexOf(document.activeElement);
+      let next = idx + (e.shiftKey ? -1 : 1);
+      if (next < 0) next = els.length - 1;
+      if (next >= els.length) next = 0;
+      els[next].focus();
+      e.preventDefault();
+    }
+  }
+  modal.addEventListener('keydown', onKey);
+
+  function closeModal(){
+    modal.removeEventListener('keydown', onKey);
+    modal.remove();
+    if (prev && typeof prev.focus === 'function') prev.focus();
+  }
 }

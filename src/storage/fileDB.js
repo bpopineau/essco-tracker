@@ -9,20 +9,18 @@ const STORE = 'handles';
 // ---- Capability detection ----
 const hasFSAccess =
   typeof window !== 'undefined' &&
-  ('showOpenFilePicker' in window || 'chooseFileSystemEntries' in window);
+  ('showOpenFilePicker' in window || 'chooseFileSystemEntries' in window || 'showDirectoryPicker' in window);
 
 const canCloneHandle = (() => {
   // Some browsers claim support but can’t structured-clone handles into IDB.
-  // We detect minimally by trying a postMessage clone to a MessageChannel.
+  // We can’t synthesize a handle without a user gesture, so this is best-effort.
   try {
     if (!hasFSAccess) return false;
+    // If the browser supports File System Access APIs, assume clone works;
+    // actual failure will be caught at put() time and we’ll fallback to metadata.
     const mc = new MessageChannel();
-    const port = mc.port1;
-    // We can’t create a handle without user gesture, so this is best-effort:
-    // assume true; browsers that really can’t clone usually fail at put() time.
-    port.postMessage({ ok: true });
-    port.close();
-    mc.port2.close();
+    mc.port1.postMessage({ ok: true });
+    mc.port1.close(); mc.port2.close();
     return true;
   } catch {
     return false;
@@ -35,8 +33,7 @@ let dbPromise = null;
 function open() {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
-    // Guard: some environments disable IDB (Safari private mode).
-    if (!('indexedDB' in window)) {
+    if (typeof window === 'undefined' || !('indexedDB' in window)) {
       reject(new Error('IndexedDB not available'));
       return;
     }
@@ -49,14 +46,13 @@ function open() {
     };
     req.onsuccess = (e) => {
       const db = e.target.result;
-      // Auto-close on versionchange so we don’t block upgrades
-      db.onversionchange = () => db.close();
+      db.onversionchange = () => db.close(); // don’t block upgrades
       resolve(db);
     };
     req.onerror = () => reject(req.error || new Error('IndexedDB open error'));
     req.onblocked = () => {
-      // Not fatal; leave resolve pending so caller can retry later if desired.
-      // Most apps will just continue using the previous version until reload.
+      // Not fatal; most apps will keep using the old connection until reload.
+      // eslint-disable-next-line no-console
       console.warn('[fileDB] IndexedDB open blocked; reload might be needed');
     };
   });
@@ -91,6 +87,43 @@ function idbDelete(store, key) {
   });
 }
 
+function idbAll(store) {
+  return new Promise((res, rej) => {
+    if ('getAll' in store) {
+      const rq = store.getAll();
+      rq.onsuccess = () => res(rq.result || []);
+      rq.onerror = () => rej(rq.error);
+    } else {
+      // Safari fallback: cursor
+      const out = [];
+      const rq = store.openCursor();
+      rq.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) { out.push(cursor.value); cursor.continue(); }
+        else res(out);
+      };
+      rq.onerror = () => rej(rq.error);
+    }
+  });
+}
+
+// ---- Permission helpers ----
+async function hasPermission(handle, mode = 'read') {
+  try {
+    if (!handle?.queryPermission) return true; // older impls → assume yes
+    return (await handle.queryPermission({ mode })) === 'granted';
+  } catch { return false; }
+}
+
+async function ensurePermission(handle, mode = 'read') {
+  try {
+    if (!handle) return false;
+    if (!handle.requestPermission || !handle.queryPermission) return true;
+    if (await hasPermission(handle, mode)) return true;
+    return (await handle.requestPermission({ mode })) === 'granted';
+  } catch { return false; }
+}
+
 // ---- Public API ----
 // Stores a FileSystemHandle when possible; otherwise stores a lightweight stub.
 // Returns the generated id.
@@ -98,20 +131,28 @@ async function putHandle(handle) {
   const db = await open();
 
   const id = crypto.randomUUID();
-  const record = makeRecord(id, handle);
+  const record = await makeRecord(id, handle);
   await idbPut(tx(db, 'readwrite'), record);
   return id;
 }
 
 // Retrieves the previously stored handle (or null if unavailable).
-// If running in a non-supporting browser, this returns null; you can still
-// inspect metadata by calling getMeta(id) if you add such a method later.
 async function getHandle(id) {
   const db = await open();
   const rec = await idbGet(tx(db, 'readonly'), id);
   if (!rec) return null;
-  // Only return a real handle if we stored one
   return rec.handle ?? null;
+}
+
+// Simple metadata lookup (never returns the handle)
+async function getMeta(id) {
+  const db = await open();
+  const rec = await idbGet(tx(db, 'readonly'), id);
+  if (!rec) return null;
+  // compute stale status on the fly
+  const stale = !rec.handle || !available();
+  const { name, kind, type = null, size = null, lastModified = null, addedAt = null } = rec;
+  return { id: rec.id, name, kind, type, size, lastModified, addedAt, stale };
 }
 
 async function delHandle(id) {
@@ -122,7 +163,7 @@ async function delHandle(id) {
 // Optional key-based helpers (e.g., a pinned directory)
 async function putHandleForKey(key, handle) {
   const db = await open();
-  const record = makeRecord(key, handle);
+  const record = await makeRecord(key, handle);
   await idbPut(tx(db, 'readwrite'), record);
   return key;
 }
@@ -141,36 +182,107 @@ async function clearAll() {
   });
 }
 
+// List all records (no handles), useful for attachments UIs
+async function list() {
+  const db = await open();
+  const all = await idbAll(tx(db, 'readonly'));
+  return all.map((rec) => {
+    const stale = !rec.handle || !available();
+    const { id, name, kind, type = null, size = null, lastModified = null, addedAt = null } = rec;
+    return { id, name, kind, type, size, lastModified, addedAt, stale };
+  });
+}
+
+// Try to fetch a File object for a file handle (null if missing/denied)
+async function getFile(id) {
+  const handle = await getHandle(id);
+  if (!handle || handle.kind !== 'file') return null;
+  if (!(await ensurePermission(handle, 'read'))) return null;
+  try {
+    return await handle.getFile();
+  } catch { return null; }
+}
+
+// Relink a missing/stale entry by prompting the user to pick a new file/dir
+async function relink(id, opts = {}) {
+  const db = await open();
+  const rec = await idbGet(tx(db, 'readonly'), id);
+  if (!rec) return null;
+  if (!hasFSAccess) return null;
+
+  const kind = opts.kind || rec.kind || 'file';
+
+  try {
+    let handle = null;
+    if (kind === 'directory' && 'showDirectoryPicker' in window) {
+      handle = await window.showDirectoryPicker(opts.pickerOptions || {});
+    } else if ('showOpenFilePicker' in window) {
+      const picks = await window.showOpenFilePicker(opts.pickerOptions || {});
+      handle = picks && picks[0] ? picks[0] : null;
+    } else if ('chooseFileSystemEntries' in window) {
+      // Legacy (Chrome 80ish)
+      handle = await window.chooseFileSystemEntries({ type: kind === 'directory' ? 'open-directory' : 'open-file' });
+    }
+
+    if (!handle) return null;
+
+    const updated = await makeRecord(id, handle);
+    await idbPut(tx(db, 'readwrite'), updated);
+
+    // Return fresh metadata to caller
+    const { name, type = null, size = null, lastModified = null, addedAt = null } = updated;
+    return { id, name, kind: updated.kind, type, size, lastModified, addedAt, stale: false };
+  } catch {
+    return null;
+  }
+}
+
 // Returns whether the environment can store and retrieve real FileSystemHandles.
 function available() {
   return hasFSAccess && canCloneHandle;
 }
 
 // ---- Internal helpers ----
-function makeRecord(id, handle) {
-  // If FS Access or structured-clone is not available, store only metadata.
-  // This keeps UI counts/names working, but open() will be null.
-  const meta = extractMeta(handle);
+async function makeRecord(id, handle) {
+  const meta = await extractMeta(handle);
   if (hasFSAccess && canCloneHandle && handle) {
     try {
       // Rely on browser to structured-clone the FileSystemHandle into IDB
-      return { id, handle, name: meta.name, kind: meta.kind };
+      return { id, handle, ...meta, addedAt: Date.now() };
     } catch {
       // Fallback to metadata-only record
-      return { id, handle: null, name: meta.name, kind: meta.kind };
+      return { id, handle: null, ...meta, addedAt: Date.now() };
     }
   }
-  return { id, handle: null, name: meta.name, kind: meta.kind };
+  return { id, handle: null, ...meta, addedAt: Date.now() };
 }
 
-function extractMeta(handle) {
-  // Safely derive a display name/kind from the handle if present
-  const name = typeof handle?.name === 'string' ? handle.name : 'file';
+async function extractMeta(handle) {
+  // Safely derive a display name/kind and light file metadata (if available)
   const kind = typeof handle?.kind === 'string' ? handle.kind : 'file';
-  return { name, kind };
+  const name = typeof handle?.name === 'string' ? handle.name : (kind === 'directory' ? 'folder' : 'file');
+
+  let type = null, size = null, lastModified = null;
+
+  if (kind === 'file') {
+    try {
+      // If the handle can produce a File, capture cheap metadata for the UI
+      if (handle && typeof handle.getFile === 'function') {
+        const file = await handle.getFile();
+        type = file.type || null;
+        size = typeof file.size === 'number' ? file.size : null;
+        lastModified = typeof file.lastModified === 'number' ? file.lastModified : null;
+      }
+    } catch {
+      // ignore; metadata remains nulls
+    }
+  }
+
+  return { name, kind, type, size, lastModified };
 }
 
 export const fileDB = {
+  // existing
   putHandle,
   getHandle,
   delHandle,
@@ -178,5 +290,14 @@ export const fileDB = {
   getHandleForKey,
   delHandleForKey,
   clearAll,
-  available
+  available,
+
+  // new helpers
+  getMeta,
+  list,
+  getFile,
+  relink,
+  ensurePermission
 };
+
+export { DB, STORE };
