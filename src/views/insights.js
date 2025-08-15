@@ -1,6 +1,6 @@
 // src/views/insights.js
 import { clear, el } from '../ui/dom.js';
-import { isOverdue, isWithinNextNDays } from '../utils/date.js';
+import { addDays, isOverdue, isWithinNextNDays, toISODate } from '../utils/date.js';
 
 export function mountInsights(root, store){
   const projectTasks = (pid)=> store.get().tasks.filter(t=>t.project_id===pid);
@@ -14,7 +14,8 @@ export function mountInsights(root, store){
       amber: grab('--graph-amber', '#f0d264'),
       green: grab('--graph-green', '#5ed09b'),
       muted: grab('--muted',       '#a7b4c6'),
-      text:  '#cfe0ff'
+      text:  '#cfe0ff',
+      border: grab('--border',     '#2b3647')
     };
   }
 
@@ -80,6 +81,79 @@ export function mountInsights(root, store){
     });
   }
 
+  // --- Due trend (last 14 days, by due date) ---
+  function buildDueSeries(tasks, days=14) {
+    const end = new Date();              // today
+    const start = addDays(end, -(days-1));
+    const labels = [];
+    const openSeries = [];
+    const doneSeries = [];
+    for (let i=0; i<days; i++) {
+      const dStr = toISODate(addDays(start, i));
+      labels.push(dStr);
+      doneSeries.push(tasks.filter(t => t.status === 'done' && t.due_date === dStr).length);
+      openSeries.push(tasks.filter(t => t.status !== 'done' && t.due_date === dStr).length);
+    }
+    return { labels, openSeries, doneSeries };
+  }
+
+  function drawSparkline(canvas, series, colors){
+    const { labels, openSeries, doneSeries } = series;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const wCSS = canvas.clientWidth || 480;
+    const hCSS = 140;
+    canvas.width = Math.floor(wCSS * dpr);
+    canvas.height = Math.floor(hCSS * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const w = wCSS, h = hCSS;
+    ctx.clearRect(0,0,w,h);
+
+    const max = Math.max(1, ...openSeries, ...doneSeries);
+    const padL = 28, padR = 12, padT = 12, padB = 24;
+    const chartW = Math.max(1, w - padL - padR);
+    const chartH = Math.max(1, h - padT - padB);
+    const n = labels.length;
+    const step = n > 1 ? chartW / (n - 1) : 0;
+
+    // grid baseline
+    ctx.strokeStyle = colors.border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, h - padB + 0.5);
+    ctx.lineTo(w - padR, h - padB + 0.5);
+    ctx.stroke();
+
+    function yFor(val){ return h - padB - (val/max)*chartH; }
+    function xFor(i){ return padL + i*step; }
+
+    // line drawer
+    function plotLine(data, stroke){
+      if (!data.length) return;
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(xFor(0), yFor(data[0]));
+      for (let i=1;i<data.length;i++){
+        ctx.lineTo(xFor(i), yFor(data[i]));
+      }
+      ctx.stroke();
+    }
+
+    // draw both lines (open first so done sits on top)
+    plotLine(openSeries, colors.amber);
+    plotLine(doneSeries, colors.green);
+
+    // endpoints + labels
+    ctx.fillStyle = colors.muted;
+    ctx.font = '11px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText(labels[0].slice(5), padL, h-6); // 'MM-DD'
+    ctx.textAlign = 'right';
+    ctx.fillText(labels[labels.length-1].slice(5), w - padR, h-6);
+  }
+
   function render(){
     clear(root);
     const state = store.get();
@@ -118,27 +192,54 @@ export function mountInsights(root, store){
       ])
     );
 
-    // Workload card
-    const card = el('div', { className:'card' });
-    card.append(el('h3', { textContent: 'Workload' }));
+    // Cards row: Workload + Due trend
+    const cards = el('div', { className:'grid', style:'grid-template-columns:2fr 1fr' });
 
-    const canvas = el('canvas', { id:'workload', height:220 });
-    card.append(canvas);
+    // Workload card
+    const cardWork = el('div', { className:'card' });
+    cardWork.append(el('h3', { textContent: 'Workload' }));
+    const canvasWork = el('canvas', { id:'workload', height:220 });
+    cardWork.append(canvasWork);
+
+    const colors = getVars();
 
     if (!open.length) {
-      card.append(el('div', { className:'empty', style:'margin-top:8px', textContent:'No open tasks to chart.' }));
+      cardWork.append(el('div', { className:'empty', style:'margin-top:8px', textContent:'No open tasks to chart.' }));
     } else if (!users.length) {
-      card.append(el('div', { className:'empty', style:'margin-top:8px', textContent:'No team members configured.' }));
+      cardWork.append(el('div', { className:'empty', style:'margin-top:8px', textContent:'No team members configured.' }));
     } else {
       const buckets = computeBuckets(users, open);
-      const colors = getVars();
-      drawWorkload(canvas, buckets, colors);
-      card.append(el('div', {
+      drawWorkload(canvasWork, buckets, colors);
+      cardWork.append(el('div', {
         className:'muted', style:'margin-top:6px'
       }, 'Open tasks by person (colors: overdue / soon / ok).'));
     }
 
-    root.append(insights, card);
+    // Trend card
+    const cardTrend = el('div', { className:'card' });
+    cardTrend.append(el('h3', { textContent:'Due trend (last 14 days)' }));
+    const legend = el('div', { className:'row', style:'gap:8px;margin-bottom:6px' });
+    legend.append(
+      el('span', { className:'pill', textContent:'Open (by due)' }),
+      el('span', { className:'pill', textContent:'Done (by due)' })
+    );
+    cardTrend.append(legend);
+
+    const canvasTrend = el('canvas', { id:'trend', height:140 });
+    cardTrend.append(canvasTrend);
+    cardTrend.append(el('div', {
+      className:'muted', style:'margin-top:6px'
+    }, 'Counts are grouped by each task’s due date.'));
+
+    const series = buildDueSeries(tasks, 14);
+    if (series.openSeries.every(v=>v===0) && series.doneSeries.every(v=>v===0)) {
+      cardTrend.append(el('div', { className:'empty', style:'margin-top:8px', textContent:'No dated tasks in the last 14 days.' }));
+    } else {
+      drawSparkline(canvasTrend, series, colors);
+    }
+
+    cards.append(cardWork, cardTrend);
+    root.append(insights, cards);
   }
 
   store.subscribe((_, keys)=>{ if (keys.some(k=>['tasks','notes','users','ui'].includes(k))) render(); });

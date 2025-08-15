@@ -1,10 +1,10 @@
-
 // src/main.js
 
 // ---------- Imports ----------
 import { buildSchema } from './schema.js';
 import { storage } from './storage.js';
 import { createStore } from './store.js';
+import { toast } from './ui/dom.js'; // <-- added
 import { BUILD_VERSION } from './version.js';
 import { mountHeader } from './views/header.js';
 import { mountInsights } from './views/insights.js';
@@ -94,15 +94,51 @@ const schema = buildSchema(DEV_MODE);
   // Initial render
   store.emit();
 
-  // Service worker: versioned register + auto-reload on update
+  // Service worker: versioned register + toast-based update prompt
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register(`./sw.js?v=${encodeURIComponent(BUILD_VERSION)}`);
+    navigator.serviceWorker.register(`./sw.js?v=${encodeURIComponent(BUILD_VERSION)}`).then((reg)=>{
+      // If a waiting worker already exists, prompt now
+      if (reg.waiting && navigator.serviceWorker.controller) {
+        showUpdateToast(reg);
+      }
+      // When a new worker is found and installed, prompt to refresh
+      reg.addEventListener('updatefound', ()=>{
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', ()=>{
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+            showUpdateToast(reg);
+          }
+        });
+      });
+    }).catch(err=>{
+      console.warn('[sw] register failed:', err);
+    });
+
+    // Reload after skipWaiting activates the new worker
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (refreshing) return;
       refreshing = true;
       location.reload();
     });
+
     console.log('ESSCO build', BUILD_VERSION, 'DEV_MODE:', DEV_MODE ? 'dev' : 'prod');
   }
 })();
+
+/* ------------ helpers ------------ */
+
+function showUpdateToast(reg){
+  toast('An update is ready.', {
+    type: 'info',
+    action: {
+      label: 'Refresh',
+      onClick: () => {
+        try {
+          reg.waiting?.postMessage?.({ type: 'SKIP_WAITING' });
+        } catch {}
+      }
+    }
+  });
+}

@@ -1,12 +1,16 @@
 {
-    "name": "ESSCO Project Tracker",
-    "short_name": "ESSCO Tracker",
-    "start_url": ".",
-    "display": "standalone",
-    "background_color": "#13171c",
-    "theme_color": "#446db3",
-    "icons": [
-      { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
-    ]
-  }
-  
+  "name": "ESSCO Project Tracker",
+  "short_name": "ESSCO Tracker",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f1319",
+  "theme_color": "#3a7bff",
+  "description": "Offline-capable project, task, and notes manager for ESSCO Electric. Runs entirely in the browser.",
+  "categories": ["productivity", "business", "utilities"],
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "launch_handler": { "client_mode": "focus-existing" }
+}
