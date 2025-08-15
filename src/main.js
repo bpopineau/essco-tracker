@@ -17,18 +17,25 @@ const DEV_MODE = true; // set to false in production
 const schema = buildSchema(DEV_MODE);
 
 // ---------- Boot ----------
-(async function main(){
+(async function main () {
   const initial = await storage.load(schema);
   const store = createStore(initial);
 
-  // Persist on changes (debounced inside storage.save)
-  store.subscribe((state)=> storage.save(state));
-
-  // Ensure a selected project on first load/import
-  if (!store.get().ui.selectedProjectId && store.get().projects.length) {
-    const first = store.get().projects[0].id;
-    store.set({ ui: { ...store.get().ui, selectedProjectId: first } });
+  // Ensure a default active tab exists
+  const s0 = store.get();
+  if (!s0.ui || !('activeTab' in s0.ui)) {
+    store.set({ ui: { ...(s0.ui || {}), activeTab: 'notes' } });
   }
+
+  // Persist on changes (autosave; ignore UI-only keys; don't store `ui`)
+  storage.attachAutosave(store, {
+    debounce: 300,
+    ignoreKeysPrefix: ['ui'],
+    persistFilter: (s) => {
+      const { ui, ...rest } = s;
+      return rest;
+    }
+  });
 
   // Sidebar
   mountSidebar(
@@ -74,77 +81,86 @@ const schema = buildSchema(DEV_MODE);
   }
 
   // Views
-  mountNotes(document.getElementById('notes'), store);
-  mountTasks(document.getElementById('tasks'), store);
-  mountInsights(document.getElementById('insights'), store);
+  mountNotes(document.getElementById('panel-notes'), store);
+  mountTasks(document.getElementById('panel-tasks'), store);
+  mountInsights(document.getElementById('panel-insights'), store);
 
   // Tabs (top-level app tabs)
-  document.querySelectorAll('.tabs .tab').forEach(t=>t.addEventListener('click', ()=>{
-    const tab = t.dataset.tab;
-    store.set({ ui: { ...store.get().ui, activeTab: tab }});
-  }));
-
-  // React to tab changes
-  store.subscribe((state, keys)=>{
-    if (!keys.includes('ui')) return;
-    const active = state.ui.activeTab;
-    const sections = { notes:'#notes', tasks:'#tasks', insights:'#insights' };
-    for (const [k, sel] of Object.entries(sections)){
-      const pane = document.querySelector(sel);
-      if (pane) pane.style.display = (k===active) ? 'grid' : 'none';
-      const tabEl = document.querySelector(`[data-tab="${k}"]`);
-      tabEl?.classList.toggle('active', k===active);
-      tabEl?.setAttribute('aria-selected', String(k===active));
-    }
-    if (active === 'insights') window.dispatchEvent(new Event('resize'));
+  const tabs = document.querySelectorAll('.tabs .tab');
+  tabs.forEach(t => {
+    t.addEventListener('click', () => {
+      const tab = t.dataset.tab;
+      const ui = store.get().ui || {};
+      store.set({ ui: { ...ui, activeTab: tab } });
+    });
+    // Keyboard activate on Space/Enter
+    t.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.key === 'Space' || e.key === 'Spacebar' || e.key === 'Enter') {
+        e.preventDefault();
+        t.click();
+      }
+    });
   });
 
-  // Keyboard shortcuts
-  window.addEventListener('keydown', (e) => {
-    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
-    const active = store.get().ui.activeTab;
+  // Ensure ARIA attributes are always correct on tab state change
+  function updateTabsAndPanels (state) {
+    const active = state?.ui?.activeTab ?? 'notes';
+    const sections = {
+      notes:    { panel: '#panel-notes',    tab: '#tab-notes' },
+      tasks:    { panel: '#panel-tasks',    tab: '#tab-tasks' },
+      insights: { panel: '#panel-insights', tab: '#tab-insights' }
+    };
+    for (const [k, { panel, tab }] of Object.entries(sections)) {
+      const $panel = document.querySelector(panel);
+      const $tab   = document.querySelector(tab);
+      const isActive = (k === active);
 
-    // Focus project search
-    if (e.key === '/') {
-      const box = document.getElementById('search');
-      if (box) { e.preventDefault(); box.focus(); box.select?.(); }
-      return;
+      // Panel visibility + a11y
+      if ($panel) {
+        if (isActive) $panel.removeAttribute('hidden');
+        else $panel.setAttribute('hidden', '');
+        // Keep legacy grid display for non-[hidden] user agents
+        $panel.style.display = isActive ? 'grid' : 'none';
+        $panel.setAttribute('aria-hidden', String(!isActive));
+      }
+
+      // Tab state + a11y
+      if ($tab) {
+        $tab.classList.toggle('active', isActive);
+        $tab.setAttribute('aria-selected', String(isActive));
+        $tab.setAttribute('tabindex', isActive ? '0' : '-1');
+      }
     }
-    // New note
-    if (e.key.toLowerCase() === 'n') {
-      if (active !== 'notes') store.set({ ui: { ...store.get().ui, activeTab: 'notes' } });
-      document.getElementById('newNoteBtn')?.click();
-      return;
-    }
-    // Quick add task
-    if (e.key.toLowerCase() === 't') {
-      if (active !== 'tasks') store.set({ ui: { ...store.get().ui, activeTab: 'tasks' } });
-      document.getElementById('newTaskBtn')?.click();
-      return;
-    }
+    if (active === 'insights') window.dispatchEvent(new Event('resize'));
+  }
+
+  // Single subscription
+  store.subscribe((state, keys) => {
+    if (keys.includes('ui')) updateTabsAndPanels(state);
   });
 
   // Initial render
   store.emit();
+  updateTabsAndPanels(store.get());
 
   // Service worker: versioned register + toast-based update prompt
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register(`./sw.js?v=${encodeURIComponent(BUILD_VERSION)}`).then((reg)=>{
+    navigator.serviceWorker.register(`./sw.js?v=${encodeURIComponent(BUILD_VERSION)}`).then((reg) => {
       // If a waiting worker already exists, prompt now
       if (reg.waiting && navigator.serviceWorker.controller) {
         showUpdateToast(reg);
       }
       // When a new worker is found and installed, prompt to refresh
-      reg.addEventListener('updatefound', ()=>{
+      reg.addEventListener('updatefound', () => {
         const nw = reg.installing;
         if (!nw) return;
-        nw.addEventListener('statechange', ()=>{
+        nw.addEventListener('statechange', () => {
           if (nw.state === 'installed' && navigator.serviceWorker.controller) {
             showUpdateToast(reg);
           }
         });
       });
-    }).catch(err=>{
+    }).catch(err => {
       console.warn('[sw] register failed:', err);
     });
 
@@ -161,7 +177,8 @@ const schema = buildSchema(DEV_MODE);
 })();
 
 /* ------------ helpers ------------ */
-function showUpdateToast(reg){
+
+function showUpdateToast (reg) {
   toast('An update is ready.', {
     type: 'info',
     action: {

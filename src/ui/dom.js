@@ -92,10 +92,13 @@ export const once = (target, type, handler, options) =>
 
 /** Lightweight toast/snackbar (uses .snackbar/.toast styles from styles.css) */
 export function toast(message, opts = {}) {
+
   const { type = '', action = null, timeout = 3500 } = opts;
-  let root = $('#snackbar-root');
+  // Prefer #toast-root, else #snackbar-root, else create .snackbar on demand
+  let root = document.getElementById('toast-root')
+    || document.getElementById('snackbar-root');
   if (!root) {
-    root = el('div', { id: 'snackbar-root', className: 'snackbar', role: 'status', 'aria-live': 'polite' });
+    root = el('div', { className: 'snackbar', role: 'status', 'aria-live': 'polite' });
     document.body.appendChild(root);
   }
 

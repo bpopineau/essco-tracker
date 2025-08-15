@@ -86,9 +86,31 @@ export function mountTasks(root, store){
     }
   }
 
+  // Debounced/batched putHandle queue
+  const _putQueue = [];
+  let _putTimer = null;
+  function debouncePutHandle(handle) {
+    return new Promise((resolve, reject) => {
+      _putQueue.push({ handle, resolve, reject });
+      if (!_putTimer) {
+        _putTimer = setTimeout(async () => {
+          const queue = _putQueue.splice(0);
+          _putTimer = null;
+          for (const item of queue) {
+            try {
+              const id = await fileDB.putHandle(item.handle);
+              item.resolve(id);
+            } catch (e) {
+              item.reject(e);
+            }
+          }
+        }, 50); // 50ms debounce window
+      }
+    });
+  }
   async function fdPutHandle(handle){
     if (!hasFileDB() || !fileDB.putHandle) throw new Error('fileDB not available');
-    return await fileDB.putHandle(handle);
+    return await debouncePutHandle(handle);
   }
 
   async function relinkAttachment(taskId, att){

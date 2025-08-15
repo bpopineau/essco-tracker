@@ -40,6 +40,23 @@ function open() {
       // Create store if missing
       if (!db.objectStoreNames.contains(STORE)) {
         db.createObjectStore(STORE, { keyPath: 'id' });
+      } else {
+        // Migration path: preserve and migrate records if new fields are added
+        // (future-proof: add migration logic here for new fields)
+        if (oldVersion < req.target.result.version) {
+          const store = req.transaction.objectStore(STORE);
+          // Example: migrate records to add new fields with defaults
+          // store.openCursor().onsuccess = function(event) {
+          //   const cursor = event.target.result;
+          //   if (cursor) {
+          //     const value = cursor.value;
+          //     // Add new fields if missing
+          //     if (value.newField === undefined) value.newField = defaultValue;
+          //     cursor.update(value);
+          //     cursor.continue();
+          //   }
+          // };
+        }
       }
       // Future migrations
       if (oldVersion < 2) {

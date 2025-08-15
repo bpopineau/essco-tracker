@@ -1,12 +1,12 @@
-// sw.js
 /* sw.js — versioned via ?v=... in register() */
 const VERSION = new URL(self.location).searchParams.get('v') || 'dev';
 const CACHE   = `essco-cache-${VERSION}`;
 const ORIGIN  = self.location.origin;
-const INDEX   = new URL('./', self.location).href; // SPA fallback target
+const INDEX   = new URL('./index.html', self.location).href; // Explicit SPA fallback target
 
 // Core files to cache for offline fallback
 const CORE = [
+  INDEX,
   './',
   './styles.css',
   './manifest.json',
@@ -26,6 +26,12 @@ self.addEventListener('install', (event) => {
     } finally {
       // Take control without waiting for a close/reopen
       await self.skipWaiting();
+
+      // Notify clients a new SW is installed (optional)
+      const clientsList = await self.clients.matchAll({ type: 'window' });
+      clientsList.forEach(client => {
+        client.postMessage({ type: 'NEW_VERSION', version: VERSION });
+      });
     }
   })());
 });
@@ -48,7 +54,7 @@ self.addEventListener('activate', (event) => {
 
 // ---- Message: allow client to trigger skipWaiting (toast "Refresh")
 self.addEventListener('message', (event) => {
-  if (event?.data && event.data.type === 'SKIP_WAITING') {
+  if (event?.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
@@ -65,12 +71,6 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(networkFirstNavigation(event));
     return;
   }
-  // Allow page to tell the waiting worker to take over
-  self.addEventListener('message', (event) => {
-    if (event?.data?.type === 'SKIP_WAITING') {
-      self.skipWaiting();
-    }
-  });
   
   const url = new URL(req.url);
   const isSameOrigin = url.origin === ORIGIN;

@@ -2,18 +2,64 @@
   "name": "ESSCO Project Tracker",
   "short_name": "ESSCO Tracker",
   "id": "./",
-  "start_url": "./",
+  "start_url": "./?source=pwa",
   "scope": "./",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#0f1319",
   "theme_color": "#3a7bff",
   "description": "Offline-capable project, task, and notes manager for ESSCO Electric. Runs entirely in the browser.",
-  "categories": ["productivity", "business", "utilities"],
+  "categories": ["productivity", "business", "utilities", "project-management"],
+  "dir": "ltr",
+  "lang": "en-US",
+  "prefer_related_applications": false,
   "icons": [
-      { "src": "icon-wrapper.svg",      "sizes": "any",     "type": "image/svg+xml", "purpose": "any" },
-      { "src": "icon-192.png",          "sizes": "192x192", "type": "image/png",      "purpose": "any" },
-      { "src": "icon-512.png",          "sizes": "512x512", "type": "image/png",      "purpose": "any" },
-      { "src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png",      "purpose": "maskable" }
+    {
+      "src": "icon-wrapper.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ],
-  "launch_handler": { "client_mode": "focus-existing" }
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "shortcuts": [
+    {
+      "name": "View Tasks",
+      "short_name": "Tasks",
+      "url": "./#tasks",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "View Projects",
+      "short_name": "Projects",
+      "url": "./#projects",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Create New Note",
+      "short_name": "New Note",
+      "url": "./#new-note",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    }
+  ]
 }

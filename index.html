@@ -1,3 +1,4 @@
+<!-- index.html -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -63,18 +64,14 @@
         <div id="tab-insights" data-tab="insights" class="tab" role="tab" aria-selected="false" aria-controls="panel-insights" tabindex="-1">Insights</div>
       </div>
 
-      <section id="panel-notes" role="tabpanel" aria-labelledby="tab-notes" class="grid"></section>
-      <section id="panel-tasks" role="tabpanel" aria-labelledby="tab-tasks" class="grid" style="display:none"></section>
-      <section id="panel-insights" role="tabpanel" aria-labelledby="tab-insights" class="grid" style="display:none"></section>
+      <section id="panel-notes" role="tabpanel" aria-labelledby="tab-notes" aria-hidden="false" class="grid"></section>
+      <section id="panel-tasks" role="tabpanel" aria-labelledby="tab-tasks" aria-hidden="true" class="grid" hidden></section>
+      <section id="panel-insights" role="tabpanel" aria-labelledby="tab-insights" aria-hidden="true" class="grid" hidden></section>
     </div>
   </main>
 </div>
-
-<!-- Optional: toast root (safe if your toast helper creates its own) -->
-<div id="toast-root" aria-live="polite" aria-atomic="true" style="position:fixed;inset:auto 16px 16px auto;z-index:10000"></div>
 
 <!-- Load the app as an ES module -->
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
-
