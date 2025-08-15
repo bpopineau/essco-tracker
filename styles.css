@@ -205,7 +205,8 @@ button.ghost {
   margin: 0 0 6px 0;
   color: #c3d3f5;
 }
-.task {
+.task { 
+  align-self: start; 
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -319,31 +320,25 @@ tbody tr td:last-child {
 .spacer {
   flex: 1;
 }
-
 /* Kanban drop zones */
-.drop {
-  flex: 1;
+.drop{
+  /* no flex-grow — prevents column equal-height forcing single cards to stretch */
   min-height: 120px;
   display: grid;
   gap: 8px;
+  align-content: start; /* don't stretch tracks to fill container */
+  align-items: start;   /* don't stretch items vertically */
 }
-.drop:empty {
-  border: 1px dashed var(--border);
-  border-radius: 10px;
-  background: repeating-linear-gradient(
-    45deg,
-    rgba(255, 255, 255, 0.02),
-    rgba(255, 255, 255, 0.02) 8px,
-    transparent 8px,
-    transparent 16px
-  );
+.drop:empty{
+  border:1px dashed var(--border);
+  border-radius:10px;
+  background: repeating-linear-gradient(45deg, rgba(255,255,255,.02), rgba(255,255,255,.02) 8px, transparent 8px, transparent 16px);
 }
-.drop.is-over {
-  outline: 2px dashed var(--brand);
-  outline-offset: -4px;
-  background-color: rgba(106, 160, 255, 0.06);
+.drop.is-over{
+  outline:2px dashed var(--brand);
+  outline-offset:-4px;
+  background-color: rgba(106,160,255,.06);
 }
-
 /* Attachments modal */
 .modal {
   position: fixed;
