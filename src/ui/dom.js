@@ -4,7 +4,15 @@
 export const $  = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-/** Create a DOM element with props + children (backwards compatible signature) */
+// @ts-check
+
+/**
+ * Tiny DOM factory.
+ * @param {string} tag
+ * @param {Record<string, any>=} props
+ * @param {...(Node|string)} children
+ * @returns {HTMLElement}
+ */
 export function el(tag, props = {}, children = []) {
   // Support both el(tag, props, children[]) and el(tag, props, ...children)
   if (arguments.length > 3) {

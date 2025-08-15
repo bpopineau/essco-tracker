@@ -1,4 +1,28 @@
+// @ts-check
 // src/views/notes.js
+
+/**
+ * @typedef {Object} Note
+ * @property {string} id
+ * @property {string} project_id
+ * @property {string=} body
+ * @property {(string|null)=} meeting_date
+ * @property {boolean=} pinned
+ */
+
+/**
+ * @typedef {Object} Task
+ * @property {string} id
+ * @property {string} project_id
+ * @property {(string|null|undefined)=} note_id
+ */
+
+/**
+ * @typedef {Object} State
+ * @property {Note[]} notes
+ * @property {Task[]} tasks
+ * @property {any} ui
+ */
 import { clear, el, highlightText, toast } from '../ui/dom.js';
 import { fmtDate, parseDate, todayStr } from '../utils/date.js';
 
@@ -128,8 +152,8 @@ export function mountNotes(root, store){
         const hint = el('div', { className:'muted', style:'margin-bottom:6px' }, 'Ctrl/Cmd+Enter to save, Esc to cancel');
 
         const actions = el('div', { className:'row', style:'gap:8px;justify-content:flex-end' });
-        const saveEd = el('button', { className:'primary' }, 'Save');
-        const cancelEd = el('button', { className:'ghost' }, 'Cancel');
+  const saveEd = el('button', { className:'primary', textContent:'Save' });
+  const cancelEd = el('button', { className:'ghost', textContent:'Cancel' });
 
         ta.addEventListener('keydown', (e)=>{
           if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); commitEdit(ta.value, n, editBtn); }
@@ -218,12 +242,23 @@ export function mountNotes(root, store){
     return s.tasks.filter(t=>t.project_id===n.project_id && t.note_id===n.id).length;
   }
 
+
+  /**
+   * @param {{id: string, pinned: boolean}} note
+   */
   function togglePin(note){
-    store.update(s=>({
-      notes: s.notes.map(n => n.id === note.id ? { ...n, pinned: !n.pinned } : n)
+    store.update((/** @type {State} */ s) => ({
+      notes: s.notes.map((/** @type {Note} */ n) =>
+        n.id === note.id ? { ...n, pinned: !n.pinned } : n
+      )
     }));
   }
 
+  /**
+   * @param {HTMLElement} container
+   * @param {string} text
+   */
+  /** @param {HTMLElement} container @param {string} text */
   function linkifyNoteBody(container, text){
     container.replaceChildren();
     if (!text) return container.appendChild(document.createTextNode(''));
@@ -251,8 +286,8 @@ export function mountNotes(root, store){
     if (rest) container.appendChild(document.createTextNode(rest));
   }
 
-  store.subscribe((_, keys)=>{
-    if (keys.some(k=>['notes','tasks','ui'].includes(k))) render();
+  store.subscribe((/** @type {State} */ _, /** @type {string[]} */ keys) => {
+    if (keys.some(k => ['notes','tasks','ui'].includes(k))) render();
   });
 
   render();

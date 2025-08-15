@@ -1,3 +1,11 @@
+// @ts-check
+/**
+ * @typedef {{ id:string, name:string }} User
+ * @typedef {{ id:string, project_id:string, assignee_user_id?:string|null, due_date?:string|null, status:string, note_id?:string|null }} Task
+ * @typedef {{ id:string, project_id:string, body?:string, meeting_date?:string|null, pinned?:boolean }} Note
+ * @typedef {{ users:User[], tasks:Task[], notes:Note[] }} State
+ * @typedef {{ get:()=>State, update:(fn:(s:State)=>State)=>void, subscribe:(fn:(s:State, keys:string[])=>void)=>()=>void }} Store
+ */
 // src/views/insights.js
 import { clear, el } from '../ui/dom.js';
 import { addDays, isOverdue, isWithinNextNDays, toISODate } from '../utils/date.js';
@@ -18,7 +26,7 @@ export function mountInsights(root, store){
       border: grab('--border',     '#2b3647')
     };
   }
-
+  /** @param {User[]} users @param {Task[]} open */
   function computeBuckets(users, open) {
     // returns [{id, name, total, over, soon, ok}]
     return users.map(u => {
@@ -30,7 +38,7 @@ export function mountInsights(root, store){
       return { id: u.id, name: u.name, total, over, soon, ok };
     });
   }
-
+  /** @param {HTMLCanvasElement} canvas @param {{user:User,total:number,overdue:number,soon:number}[]} buckets @param {{over:string,soon:string,rest:string}} colors */
   function drawWorkload(canvas, buckets, colors){
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
@@ -57,6 +65,7 @@ export function mountInsights(root, store){
 
     buckets.forEach((b, i) => {
       const x = pad + i*(bw+gap);
+      /** @param {number} n */
       const scale = (n) => (n/max)*(h-50);
 
       let y = h-30;
@@ -81,7 +90,7 @@ export function mountInsights(root, store){
     });
   }
 
-  // --- Due trend (last 14 days, by due date) ---
+  /** @param {Task[]} tasks @param {number=} days */
   function buildDueSeries(tasks, days=14) {
     const end = new Date();              // today
     const start = addDays(end, -(days-1));
@@ -96,7 +105,7 @@ export function mountInsights(root, store){
     }
     return { labels, openSeries, doneSeries };
   }
-
+  /** @param {HTMLCanvasElement} canvas @param {{done:number[], open:number[]}} series @param {{done:string, open:string}} colors */
   function drawSparkline(canvas, series, colors){
     const { labels, openSeries, doneSeries } = series;
     const ctx = canvas.getContext('2d');
@@ -125,10 +134,10 @@ export function mountInsights(root, store){
     ctx.lineTo(w - padR, h - padB + 0.5);
     ctx.stroke();
 
-    const yFor = (val) => h - padB - (val/max)*chartH;
-    const xFor = (i)   => padL + i*step;
+    /** @param {number} val */ const yFor = (val) => h - padB - (val / max) * chartH;
+    /** @param {number} i   */ const xFor = (i)   => padL + i * (chartW / Math.max(1, series.done.length - 1));
 
-    // line drawer
+    /** @param {number[]} data @param {string} stroke */
     function plotLine(data, stroke){
       if (!data.length) return;
       ctx.strokeStyle = stroke;
@@ -153,7 +162,7 @@ export function mountInsights(root, store){
     ctx.textAlign = 'right';
     if (labels.length) ctx.fillText(labels[labels.length-1].slice(5), w - padR, h-6);
   }
-
+  /** @param {string} txt @param {string} bg */
   function chip(txt, bg){
     const s = el('span', { className:'pill', style:`background:${bg};border-color:rgba(0,0,0,.25)` }, txt);
     return s;
@@ -268,7 +277,9 @@ export function mountInsights(root, store){
     root.append(insights, cards);
   }
 
-  store.subscribe((_, keys)=>{ if (keys.some(k=>['tasks','notes','users','ui'].includes(k))) render(); });
+  store.subscribe((/** @type {*} */ _, /** @type {string[]} */ keys) => {
+    if (keys.some(k => ['tasks','notes','users','ui'].includes(k))) render();
+  });
   window.addEventListener('resize', ()=>{ if (store.get().ui.activeTab==='insights') render(); });
   render();
 }

@@ -125,19 +125,19 @@ function openImportModal(file, store, inputEl){
   const replId  = 'opt_repl_'  + Math.random().toString(36).slice(2,6);
 
   body.append(
-    el('div', { className:'muted' }, `Choose how to apply “${name}”.`),
+  el('div', { className:'muted', textContent:`Choose how to apply “${name}”.` }),
     el('label', { className:'row', style:'gap:8px;align-items:center' }, [
       el('input', { type:'radio', name:'impMode', id: mergeId, value:'merge', checked:true }),
       el('div', {}, [
         el('strong', { textContent:'Merge (recommended)' }),
-        el('div', { className:'muted' }, 'Keep your current data, overwrite conflicts from the file.')
+  el('div', { className:'muted', textContent:'Keep your current data, overwrite conflicts from the file.' })
       ])
     ]),
     el('label', { className:'row', style:'gap:8px;align-items:center' }, [
       el('input', { type:'radio', name:'impMode', id: replId, value:'replace' }),
       el('div', {}, [
         el('strong', { textContent:'Replace (wipe current)' }),
-        el('div', { className:'muted' }, 'Completely replace current data with the file contents.')
+  el('div', { className:'muted', textContent:'Completely replace current data with the file contents.' })
       ])
     ])
   );
@@ -220,7 +220,7 @@ function openDeleteProjectModal(store){
   );
 
   const actions = el('div', { className:'row', style:'margin-top:10px;justify-content:space-between' });
-  const archiveBtn = el('button', { className:'ghost' }, 'Archive instead');
+  const archiveBtn = el('button', { className:'ghost', textContent:'Archive instead' });
   archiveBtn.onclick = ()=>{
     store.update(s=>({ projects: s.projects.map(p=>p.id===pid? { ...p, status:'archived' } : p) }));
     closeModal();
