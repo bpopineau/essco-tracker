@@ -19,7 +19,7 @@ export function mountTasks(root, store){
   const getUser   = (id)=> store.get().users.find(u=>u.id===id);
   const usersList = ()=> store.get().users;
   const projectTasks = (pid)=> store.get().tasks.filter(t=>t.project_id===pid);
-  const projectNotes = (pid)=> store.get().notes
+  const _projectNotes = (pid)=> store.get().notes
     .filter(n=>n.project_id===pid)
     .sort((a,b)=> b.meeting_date.localeCompare(a.meeting_date));
 
