@@ -44,7 +44,7 @@ function open() {
         // Migration path: preserve and migrate records if new fields are added
         // (future-proof: add migration logic here for new fields)
         if (oldVersion < req.target.result.version) {
-          const store = req.transaction.objectStore(STORE);
+          const _store = req.transaction.objectStore(STORE);
           // Example: migrate records to add new fields with defaults
           // store.openCursor().onsuccess = function(event) {
           //   const cursor = event.target.result;
@@ -61,7 +61,7 @@ function open() {
       // Future migrations
       if (oldVersion < 2) {
         // example: add indexes, migrate fields without clearing
-        const store = req.transaction.objectStore(STORE);
+        const _store = req.transaction.objectStore(STORE);
         // store.createIndex('name', 'name', { unique: false });
       }
     };
