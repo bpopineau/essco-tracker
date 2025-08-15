@@ -1,15 +1,40 @@
-:root {
-  --bg: #13171c;
-  --panel: #222c3a;
-  --muted: #a8b0bd;
-  --text: #e8eef6;
-  --brand: #446db3;
-  --ok: #2ecc71;
-  --warn: #f1c40f;
-  --bad: #e74c3c;
-  --card: #1b212b;
-  --chip: #222a35;
-  --border: #2a3240;
+:root{
+  /* Brand core */
+  --brand-50:#eef4ff;
+  --brand-200:#b9cdfc;
+  --brand-400:#6aa0ff;   /* primary accent you’re already using */
+  --brand-500:#4c89ff;
+  --brand-600:#2f6ff0;   /* default primary */
+  --brand-700:#2559c3;   /* hover/active */
+
+  /* Warm secondary for warnings / highlights */
+  --accent-100:#fff4dc;
+  --accent-300:#ffd07a;
+  --accent-500:#ffb020;
+  --accent-600:#d98c0a;
+
+  /* Semantic status */
+  --ok-200:#c9f4df;    --ok-500:#2ecc71;   --ok-700:#1f8a4e;
+  --warn-200:#ffe7a6;  --warn-500:#f4b400; --warn-700:#a66f00;
+  --bad-200:#ffc7bf;   --bad-500:#e74c3c;  --bad-700:#a63226;
+
+  /* Surfaces & text */
+  --bg:#0f1319;         /* page background (a touch deeper than before) */
+  --panel:#151b23;      /* cards/side panel */
+  --card:#1b2230;       /* task/inner surfaces */
+  --chip:#202838;       /* pills/tabs */
+  --border:#2b3647;
+
+  --text:#e8eef6;
+  --muted:#a7b4c6;
+
+  /* Graph tints (insights) */
+  --graph-red:#e45d57;
+  --graph-amber:#f0d264;
+  --graph-green:#5ed09b;
+
+  /* Focus ring */
+  --focus:#8ab4ff;
 }
 * {
   box-sizing: border-box;
@@ -31,15 +56,21 @@ aside {
   display: flex;
   flex-direction: column;
 }
-.brand {
-  padding: 16px 16px 8px;
-  font-weight: 700;
-  color: var(--brand);
-  letter-spacing: 0.3px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* Brand highlights where appropriate */
+.brand{ color:var(--brand-400); }
+.badge{ background:var(--chip); border:1px solid var(--border); color:var(--muted); }
+/* Links (if any appear later) */
+a{ color:var(--brand-400); }
+a:hover{ color:var(--brand-500); }
+/* Focus ring for keyboard users */
+:focus-visible{
+  outline:2px solid var(--focus);
+  outline-offset:2px;
+  border-radius:8px;
 }
+/* Optional: subtle contrast between sidebar and content */
+aside{ background:var(--panel); }
+main header{ background:linear-gradient(180deg,var(--panel),transparent); }
 .brand .pill {
   margin-left: auto;
 }
@@ -163,29 +194,47 @@ button {
   border-color: #2c394d;
   cursor: pointer;
 }
-button.primary {
-  background: var(--brand);
-  border-color: #5a8de0;
-  color: #0b1118;
+/* Buttons */
+button.primary{
+  background:var(--brand-600);
+  border-color:var(--brand-700);
+  color:#0b1118;
 }
-button.ghost {
-  background: var(--chip);
+button.primary:hover{ background:var(--brand-700); }
+button.primary:active{ background:var(--brand-700); transform: translateY(0.5px); }
+button.ghost{
+  background:var(--chip);
+  border-color:var(--border);
+}
+button.ghost:hover{ background:#243045; }
+
+/* Tabs */
+.tab.active{
+  background:#1f2736;
+  color:var(--text);
+  border-color:#364055;
 }
 .muted {
   color: var(--muted);
 }
-.pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 48px; /* adjust as needed */
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--chip);
-  font-size: 12px;
-  line-height: 1;
+/* Pills: vertical centering + consistent width already in place */
+.pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:48px;
+  padding:2px 8px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:var(--chip);
+  font-size:12px;
+  line-height:1;
 }
+/* Semantic pill tints (soft, readable) */
+.chip-ok   { background: color-mix(in srgb, var(--ok-500) 16%, transparent);   border-color: color-mix(in srgb, var(--ok-500) 35%, transparent);   color:#bff2d6; }
+.chip-warn { background: color-mix(in srgb, var(--warn-500) 16%, transparent); border-color: color-mix(in srgb, var(--warn-500) 35%, transparent); color:#ffe6b0; }
+.chip-bad  { background: color-mix(in srgb, var(--bad-500) 16%, transparent);  border-color: color-mix(in srgb, var(--bad-500) 35%, transparent);  color:#ffbeb4; }
+
 .kanban {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -320,14 +369,13 @@ tbody tr td:last-child {
 .spacer {
   flex: 1;
 }
-/* Kanban drop zones */
+/* Keep kanban drop zones compact (from earlier fix) */
 .drop{
-  /* no flex-grow — prevents column equal-height forcing single cards to stretch */
-  min-height: 120px;
-  display: grid;
-  gap: 8px;
-  align-content: start; /* don't stretch tracks to fill container */
-  align-items: start;   /* don't stretch items vertically */
+  min-height:120px;
+  display:grid;
+  gap:8px;
+  align-content:start;
+  align-items:start;
 }
 .drop:empty{
   border:1px dashed var(--border);
@@ -335,9 +383,9 @@ tbody tr td:last-child {
   background: repeating-linear-gradient(45deg, rgba(255,255,255,.02), rgba(255,255,255,.02) 8px, transparent 8px, transparent 16px);
 }
 .drop.is-over{
-  outline:2px dashed var(--brand);
+  outline:2px dashed var(--brand-400);
   outline-offset:-4px;
-  background-color: rgba(106,160,255,.06);
+  background-color: color-mix(in srgb, var(--brand-400) 8%, transparent);
 }
 /* Attachments modal */
 .modal {
