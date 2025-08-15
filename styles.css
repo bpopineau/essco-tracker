@@ -355,6 +355,8 @@ tbody tr td:last-child{
   box-shadow: var(--shadow-2);
   display:flex; gap:12px; align-items:center;
 }
+.toast.info { border-color: color-mix(in srgb, var(--brand-600) 40%, var(--border)); }
+
 .toast.success{ border-color: color-mix(in srgb, var(--ok-500) 40%, var(--border)) }
 .toast.warn   { border-color: color-mix(in srgb, var(--warn-500) 40%, var(--border)) }
 .toast.error  { border-color: color-mix(in srgb, var(--bad-500) 40%, var(--border)) }

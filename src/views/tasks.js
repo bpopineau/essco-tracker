@@ -1,10 +1,15 @@
 // src/views/tasks.js
+import { fileDB as fileDBMod } from '../storage/fileDB.js';
 import { clear, el, highlightText, toast } from '../ui/dom.js';
 import { daysUntil, fmtDate, formatRelative } from '../utils/date.js';
 
 // Matches other parts of the app
 const STATUS = ['backlog','in_progress','blocked','done'];
 const PRIORITIES = ['low','med','high'];
+
+// unify fileDB source (module import first, then optional global)
+const fileDB = (typeof window !== 'undefined' && window.fileDB) ? window.fileDB : fileDBMod;
+const supportsPicker = typeof window !== 'undefined' && 'showOpenFilePicker' in window;
 
 // Fallback-safe helpers
 const makeId = (prefix)=> prefix + Math.random().toString(36).slice(2,8);
@@ -35,12 +40,80 @@ export function mountTasks(root, store){
     return tf;
   };
 
-  // --- Attachments helpers (use global fileDB if present) ---
+  // --- file/attachments shims so this works even without new fileDB helpers ---
+  const hasFileDB = () => !!fileDB;
+
+  async function ensurePermission(handle){
+    if (!handle) return false;
+    const q = await handle.queryPermission?.({ mode:'read' });
+    if (q === 'granted') return true;
+    const r = await handle.requestPermission?.({ mode:'read' });
+    return r === 'granted';
+  }
+
+  async function fdGetHandle(id){
+    if (!hasFileDB() || !fileDB.getHandle) return null;
+    try { return await fileDB.getHandle(id); } catch { return null; }
+  }
+
+  async function fdGetFile(id){
+    if (!hasFileDB()) return null;
+    if (typeof fileDB.getFile === 'function') {
+      try { return await fileDB.getFile(id); } catch { return null; }
+    }
+    const h = await fdGetHandle(id);
+    if (!h) return null;
+    const ok = await ensurePermission(h);
+    if (!ok) return null;
+    try { return await h.getFile(); } catch { return null; }
+  }
+
+  async function fdGetMeta(id){
+    if (!hasFileDB()) return { stale:true };
+    if (typeof fileDB.getMeta === 'function') {
+      try { return await fileDB.getMeta(id); } catch { /* fall through */ }
+    }
+    // derive from handle/file
+    const h = await fdGetHandle(id);
+    if (!h) return { stale:true };
+    try {
+      const ok = await ensurePermission(h);
+      if (!ok) return { name:h.name, kind:h.kind, stale:true };
+      const f = await h.getFile();
+      return { name:h.name, kind:h.kind, type:f.type, size:f.size, lastModified:f.lastModified };
+    } catch {
+      return { name:h.name, kind:h.kind, stale:true };
+    }
+  }
+
+  async function fdPutHandle(handle){
+    if (!hasFileDB() || !fileDB.putHandle) throw new Error('fileDB not available');
+    return await fileDB.putHandle(handle);
+  }
+
+  async function relinkAttachment(taskId, att){
+    if (!supportsPicker) { toast('Relink not supported in this browser.', { type:'warn' }); return null; }
+    const picks = await showOpenFilePicker({ multiple:false });
+    const h = picks[0]; if (!h) return null;
+    // If fileDB exposes relink, prefer it
+    if (hasFileDB() && typeof fileDB.relink === 'function') {
+      try { return await fileDB.relink(att.id, h); } catch { /* fall through */ }
+    }
+    // Fallback: create a new record and replace the attachment id in state
+    const newId = await fdPutHandle(h);
+    store.update(s=>({
+      tasks: s.tasks.map(t => t.id===taskId
+        ? { ...t, attachments: (t.attachments||[]).map(a => a.id===att.id ? { ...a, id:newId, name:h.name, kind:h.kind||'file' } : a) }
+        : t)
+    }));
+    return { id:newId, name:h.name, kind:h.kind||'file' };
+  }
+
+  // --- Attachments UI helpers ---
   const attCount = (t)=> (t.attachments?.length || 0);
-  const hasFileDB = () => typeof window !== 'undefined' && !!window.fileDB;
 
   async function pickAndAttach(taskId){
-    if (!hasFileDB() || !window.showOpenFilePicker){
+    if (!supportsPicker || !hasFileDB()){
       toast('Local file linking not supported here. Try Chrome/Edge on desktop.', { type:'warn' });
       return;
     }
@@ -48,31 +121,32 @@ export function mountTasks(root, store){
       const picks = await showOpenFilePicker({ multiple:true });
       const newMetas = [];
       for (const h of picks){
-        const id = await fileDB.putHandle(h);
+        const id = await fdPutHandle(h);
         newMetas.push({ id, name: h.name, kind: h.kind || 'file' });
       }
       store.update(s=>({
         tasks: s.tasks.map(t => t.id===taskId ? { ...t, attachments: [...(t.attachments||[]), ...newMetas] } : t)
       }));
       toast(`${newMetas.length} file${newMetas.length>1?'s':''} attached`, { type:'success' });
-    }catch(err){
-      // user cancelled or error
-    }
+    }catch{ /* cancel or error */ }
   }
 
-  async function openAttachment(att){
+  async function openAttachment(att, taskId){
     if (!hasFileDB()){
       toast('Attachments unavailable in this browser.', { type:'warn' });
       return;
     }
-    const file = await fileDB.getFile(att.id);
+    const file = await fdGetFile(att.id);
     if (!file){
-      const meta = await fileDB.getMeta(att.id);
+      const meta = await fdGetMeta(att.id);
       if (meta?.stale) {
-        toast('This file needs to be relinked.', { type:'warn', action:{ label:'Relink', onClick: async () => {
-          const m = await fileDB.relink(att.id);
-          toast(m ? 'Relinked' : 'Relink cancelled', { type: m ? 'success' : 'warn' });
-        }}});
+        toast('This file needs to be relinked.', {
+          type:'warn',
+          action:{ label:'Relink', onClick: async () => {
+            const res = await relinkAttachment(taskId, att);
+            toast(res ? 'Relinked' : 'Relink cancelled', { type: res ? 'success' : 'warn' });
+          }}
+        });
       } else {
         toast('Missing or denied permission to open file.', { type:'error' });
       }
@@ -84,20 +158,20 @@ export function mountTasks(root, store){
   }
 
   async function removeAttachment(taskId, att){
-    // Remove from task first; leave underlying IDB record removal best-effort
+    // Update state first; IDB deletion best-effort
     store.update(s=>({
       tasks: s.tasks.map(t => t.id===taskId ? { ...t, attachments: (t.attachments||[]).filter(a=>a.id!==att.id) } : t)
     }));
-    if (hasFileDB()){
+    if (hasFileDB() && typeof fileDB.delHandle === 'function'){
       try{ await fileDB.delHandle(att.id); }catch{}
     }
     toast('Attachment removed', { type:'success' });
   }
 
-  function openAttachmentModal(taskId, triggerBtn){
+  function openAttachmentModal(taskId){
     const t = store.get().tasks.find(x=>x.id===taskId);
     const modal = el('div', { className:'modal' });
-    const panel = el('div', { className:'panel', role:'dialog', ariaModal:'true' });
+    const panel = el('div', { className:'panel', role:'dialog', 'aria-modal':'true' });
     const headingId = makeId('att_');
     const head = el('div', { className:'row' });
     head.append(
@@ -116,14 +190,11 @@ export function mountTasks(root, store){
         return;
       }
       for (const att of items){
-        const meta = hasFileDB() ? (await fileDB.getMeta(att.id)) : { name: att.name, kind: att.kind, stale: true };
+        const meta = await fdGetMeta(att.id);
         const row = el('div', { className:'att-item' });
         const left = el('div', { className:'name' });
 
-        // Name + metadata chips
-        left.append(
-          el('span', { textContent: meta?.name || att.name })
-        );
+        left.append(el('span', { textContent: meta?.name || att.name }));
         const chips = el('div', { className:'row' });
         if (meta?.type) chips.append(el('span', { className:'pill', textContent: meta.type }));
         if (Number.isFinite(meta?.size)) chips.append(el('span', { className:'pill', textContent: humanFileSize(meta.size) }));
@@ -132,9 +203,9 @@ export function mountTasks(root, store){
 
         const right = el('div', { className:'row' });
         right.append(
-          el('button', { className:'ghost', title:'Open', onclick:()=>openAttachment(att) }, 'Open'),
+          el('button', { className:'ghost', title:'Open', onclick:()=>openAttachment(att, t.id) }, 'Open'),
           ...(meta?.stale ? [el('button', { className:'ghost', title:'Relink', onclick:async ()=>{
-            const rel = await fileDB.relink(att.id);
+            const rel = await relinkAttachment(t.id, att);
             if (rel) { await renderList(); toast('Relinked', { type:'success' }); }
             else toast('Relink cancelled', { type:'warn' });
           } }, 'Relink')] : []),
@@ -202,7 +273,7 @@ export function mountTasks(root, store){
     const card = el('div', { className:'task', draggable:true, id:t.id });
     const top = el('div', { style:'display:flex;justify-content:space-between;gap:8px;align-items:center' });
 
-    const title = el('div', { });
+    const title = el('div', {});
     title.textContent = t.title;
     if (searchTerm) highlightText(title, searchTerm);
 
@@ -210,8 +281,7 @@ export function mountTasks(root, store){
       className:'btn-icon ghost',
       title:`Attachments (${attCount(t)})`,
       'aria-label':'Attachments',
-      dataset:{ attBtn:'' },
-      onclick: (e)=> openAttachmentModal(t.id, e.currentTarget)
+      onclick: ()=> openAttachmentModal(t.id)
     }, '📎');
 
     top.append(title, attBtn);
@@ -223,7 +293,7 @@ export function mountTasks(root, store){
       el('span', {
         className:`pill due ${chip}`,
         title: t.due_date ? fmtDate(t.due_date) : 'No due',
-        ariaLabel:`Status: ${tip}`
+        'aria-label': `Due: ${t.due_date ? fmtDate(t.due_date) : 'No due'} (${tip})`
       }, t.due_date ? formatRelative(t.due_date) : 'No due'),
       ...(t.note_id ? [el('span', { className:'pill', textContent:`Note ${t.note_id}` })] : [])
     );
@@ -406,7 +476,7 @@ export function mountTasks(root, store){
         // Attachments action (button only)
         const filesTd = el('td');
         const attBtn = el('button', { className:'btn-icon ghost', title:`Attachments (${attCount(t)})`, 'aria-label':'Attachments' }, '📎');
-        attBtn.onclick = (e)=> openAttachmentModal(t.id, e.currentTarget);
+        attBtn.onclick = ()=> openAttachmentModal(t.id);
         filesTd.appendChild(attBtn);
         tr.appendChild(filesTd);
 
@@ -462,7 +532,6 @@ export function mountTasks(root, store){
 }
 
 /* ---------- small utils ---------- */
-
 function humanFileSize(bytes){
   if (!Number.isFinite(bytes)) return '';
   const thresh = 1024;

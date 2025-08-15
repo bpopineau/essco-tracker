@@ -1,4 +1,3 @@
-
 // src/ui/dom.js
 
 /** Query helpers */
@@ -57,7 +56,12 @@ export function render(node, ...children) {
   return node;
 }
 
-/** Event listener helper. Supports delegation when a selector is provided. Returns an off() cleanup fn. */
+/**
+ * Event listener helper.
+ * - Direct:  on(target, 'click', handler, options?)
+ * - Delegate: on(target, 'click', 'button.selector', handler, options?)
+ * Returns an off() cleanup fn.
+ */
 export function on(target, type, selectorOrHandler, maybeHandler, options) {
   const delegated = typeof selectorOrHandler === 'string';
   const selector = delegated ? selectorOrHandler : null;
@@ -65,22 +69,26 @@ export function on(target, type, selectorOrHandler, maybeHandler, options) {
 
   if (!handler) throw new Error('on(): handler is required');
 
+  // Allow options in the 4th position for direct listeners
+  const opts = delegated ? options : (typeof maybeHandler === 'object' ? maybeHandler : options);
+
   const listener = (ev) => {
     if (!delegated) return handler(ev);
     const match = ev.target && ev.target.closest(selector);
-    if (match && target.contains(match)) {
+    const within = match && (typeof target.contains === 'function' ? target.contains(match) : true);
+    if (within) {
       Object.defineProperty(ev, 'delegateTarget', { value: match, configurable: true });
       return handler(ev);
     }
   };
 
-  target.addEventListener(type, listener, options);
-  return () => target.removeEventListener(type, listener, options);
+  target.addEventListener(type, listener, opts);
+  return () => target.removeEventListener(type, listener, opts);
 }
 
 /** One-time listener sugar */
 export const once = (target, type, handler, options) =>
-  on(target, type, handler, { ...options, once: true });
+  on(target, type, handler, undefined, { ...(options||{}), once: true });
 
 /** Lightweight toast/snackbar (uses .snackbar/.toast styles from styles.css) */
 export function toast(message, opts = {}) {
@@ -126,18 +134,21 @@ export function highlightText(root, term) {
 
   if (!term || !String(term).trim()) return;
 
-  const query = String(term);
-  const re = new RegExp(escapeRegExp(query), 'gi');
+  const pattern = escapeRegExp(String(term));
+  const reI = new RegExp(pattern, 'i');   // for testing presence (stateless)
+  const reG = new RegExp(pattern, 'gi');  // for splitting/matching
+
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode: (n) => n.nodeValue && re.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
+    acceptNode: (n) => (n.nodeValue && reI.test(n.nodeValue)) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
   });
 
   const toProcess = [];
   while (walker.nextNode()) toProcess.push(walker.currentNode);
 
   for (const textNode of toProcess) {
-    const parts = textNode.nodeValue.split(re);
-    const matches = textNode.nodeValue.match(re);
+    const str = textNode.nodeValue;
+    const parts = str.split(reG);
+    const matches = str.match(reG);
     const fragNode = document.createDocumentFragment();
 
     parts.forEach((part, i) => {
@@ -154,12 +165,12 @@ export function highlightText(root, term) {
 
 /* ----------------------- internal helpers ----------------------- */
 
-function appendChild(parent, ch, isSvg = false) {
+function appendChild(parent, ch, _isSvg = false) {
   if (ch == null || ch === false || ch === true) return;
   if (typeof ch === 'string' || typeof ch === 'number') {
     parent.appendChild(document.createTextNode(String(ch)));
   } else if (Array.isArray(ch)) {
-    ch.forEach((c) => appendChild(parent, c, isSvg));
+    ch.forEach((c) => appendChild(parent, c, _isSvg));
   } else {
     parent.appendChild(ch);
   }
@@ -184,24 +195,19 @@ function applyProps(node, props, isSvg = false) {
 
     // Class
     if (key === 'class' || key === 'className') {
-      if (Array.isArray(value)) node.className = value.filter(Boolean).join(' ');
-      else node.className = String(value);
+      node.className = Array.isArray(value) ? value.filter(Boolean).join(' ') : String(value);
       continue;
     }
 
     // Style
     if (key === 'style' && value && typeof value === 'object') {
-      for (const [k, v] of Object.entries(value)) {
-        node.style[k] = v;
-      }
+      for (const [k, v] of Object.entries(value)) node.style[k] = v;
       continue;
     }
 
     // Dataset
     if (key === 'dataset' && value && typeof value === 'object') {
-      for (const [k, v] of Object.entries(value)) {
-        node.dataset[k] = v;
-      }
+      for (const [k, v] of Object.entries(value)) node.dataset[k] = v;
       continue;
     }
 
@@ -225,7 +231,6 @@ function isAttr(key, isSvg) {
 }
 
 function attrName(key) {
-  // Allow passing htmlFor → for, className → class in attribute path
   if (key === 'htmlFor') return 'for';
   if (key === 'className') return 'class';
   return key;

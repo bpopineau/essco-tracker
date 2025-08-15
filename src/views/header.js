@@ -9,7 +9,7 @@ export function mountHeader(refs, store){
   const getUser    = (id)=> store.get().users.find(u=>u.id===id);
   const getProject = ()=> store.get().projects.find(p=>p.id===store.get().ui.selectedProjectId);
 
-  // Ensure a save-status slot exists for storage.js feedback
+  // Ensure a save-status slot exists
   let saveStatus = document.getElementById('saveStatus');
   if (!saveStatus) {
     const headerEl = projTitleEl.closest('header') || document.querySelector('header');
@@ -20,21 +20,37 @@ export function mountHeader(refs, store){
     }
   }
 
-  // Attachments capability banner (informational only)
+  // Listen to storage autosave events for feedback
+  if (typeof storage.onStatusChange === 'function') {
+    storage.onStatusChange((status) => {
+      if (saveStatus) {
+        saveStatus.textContent =
+          status === 'saving' ? 'Saving…' :
+          status === 'error'  ? 'Save failed' :
+          status === 'idle'   ? 'All changes saved' : '';
+      }
+    });
+  }
+
+  // Attachments capability banner (info only)
   const headerEl = projTitleEl.closest('header') || document.querySelector('header');
   if (headerEl && !document.getElementById('attBanner')) {
-    const supported = !!(window.fileDB && window.fileDB.available && window.fileDB.available());
-    if (!supported) {
-      const banner = el('div', {
-        id:'attBanner',
-        className:'badge',
-        style:'margin:8px 16px 0 auto; display:inline-flex; align-items:center; gap:8px'
-      }, ['ℹ️ Full attachments work best in Chrome/Edge on desktop']);
-      headerEl.appendChild(banner);
+    try {
+      const supported = !!(window.fileDB && window.fileDB.available && window.fileDB.available());
+      if (!supported) {
+        const banner = el('div', {
+          id:'attBanner',
+          className:'badge',
+          style:'margin:8px 16px 0 auto; display:inline-flex; align-items:center; gap:8px'
+        }, ['ℹ️ Full attachments work best in Chrome/Edge on desktop']);
+        headerEl.appendChild(banner);
+      }
+    } catch {
+      // no-op if fileDB unavailable
     }
   }
 
-  // Add a "Delete Project…" button to the header actions row
+  // Add Delete Project button to header actions
   const actionsRow = document.querySelector('header .row') || headerEl;
   let delBtn = actionsRow?.querySelector('#btnDeleteProject');
   if (actionsRow && !delBtn){
@@ -57,13 +73,11 @@ export function mountHeader(refs, store){
     if (delBtn) delBtn.disabled = !p;
   }
 
-  // Export current snapshot
   exportBtn.addEventListener('click', ()=>{
     storage.exportJSON(store.get());
     toast('Export started', { type:'success' });
   });
 
-  // Import with merge/replace confirm
   importInput.addEventListener('change', async (e)=>{
     const file = e.target.files?.[0]; if (!file) return;
     openImportModal(file, store, importInput);
@@ -79,11 +93,16 @@ export function mountHeader(refs, store){
     setTimeout(()=>document.getElementById('noteBody')?.focus(), 0);
   });
 
-  store.subscribe((_, keys)=>{ if (keys.includes('projects') || keys.includes('ui')) render(); });
+  // Granular subscription: only re-render on relevant keys
+  store.subscribe((_, keys)=>{
+    if (keys.some(k => k.startsWith('projects') || k === 'ui.selectedProjectId' || k.startsWith('users'))) {
+      render();
+    }
+  });
   render();
 }
 
-/* ---------------- Import Modal (merge vs replace) ---------------- */
+/* ---------------- Import Modal ---------------- */
 function openImportModal(file, store, inputEl){
   const modal = el('div', { className:'modal' });
   const panel = el('div', { className:'panel', role:'dialog', ariaModal:'true' });
@@ -96,8 +115,11 @@ function openImportModal(file, store, inputEl){
   );
   panel.setAttribute('aria-labelledby', headingId);
 
+  const descId = 'imp_desc_' + Math.random().toString(36).slice(2,8);
+  panel.setAttribute('aria-describedby', descId);
+
   const name = file.name || 'backup.json';
-  const body = el('div', { className:'grid', style:'gap:8px;margin-top:8px' });
+  const body = el('div', { className:'grid', style:'gap:8px;margin-top:8px', id: descId });
 
   const mergeId = 'opt_merge_' + Math.random().toString(36).slice(2,6);
   const replId  = 'opt_repl_'  + Math.random().toString(36).slice(2,6);
@@ -132,14 +154,16 @@ function openImportModal(file, store, inputEl){
   ok.onclick = async ()=>{
     const mode = panel.querySelector('input[name="impMode"]:checked')?.value || 'merge';
     try{
-      const merged = await storage.importJSON(file, { strategy: mode });
-      // Replace entire state in one emit (stable for views)
-      if (typeof store.replace === 'function') store.replace(merged);
-      else store.update(()=>merged);
+      let imported = await storage.importJSON(file, { strategy: mode });
+      // Apply schema migration before replacing
+      if (typeof storage.migrate === 'function') {
+        imported = storage.migrate(imported, imported.version || null);
+      }
+      if (typeof store.replace === 'function') store.replace(imported);
+      else store.update(()=>imported);
       toast(`Import complete (${mode})`, { type:'success' });
     }catch(err){
       toast('Import failed', { type:'error' });
-      // eslint-disable-next-line no-console
       console.error('[header] import error:', err);
     }finally{
       if (inputEl) inputEl.value = '';
@@ -147,38 +171,14 @@ function openImportModal(file, store, inputEl){
     }
   };
 
-  // Focus trap + Escape
-  const prev = document.activeElement;
-  const focusables = () => Array.from(panel.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
-    .filter(el => !el.hasAttribute('disabled'));
-  (focusables()[0] || panel).focus();
-
-  function onKey(e){
-    if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
-    if (e.key === 'Enter' && e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) {
-      e.preventDefault(); ok.click();
-    }
-    if (e.key === 'Tab'){
-      const els = focusables(); if (!els.length) return;
-      const idx = els.indexOf(document.activeElement);
-      let next = idx + (e.shiftKey ? -1 : 1);
-      if (next < 0) next = els.length - 1;
-      if (next >= els.length) next = 0;
-      els[next].focus();
-      e.preventDefault();
-    }
-  }
-  modal.addEventListener('keydown', onKey);
-
+  trapFocus(modal, panel);
   function closeModal(){
-    modal.removeEventListener('keydown', onKey);
     modal.remove();
-    if (prev && typeof prev.focus === 'function') prev.focus();
   }
 }
 
-/* ---------------- Delete Project Modal (with Undo) ---------------- */
-function openDeleteProjectModal(store, triggerBtn){
+/* ---------------- Delete Project Modal ---------------- */
+function openDeleteProjectModal(store){
   const state = store.get();
   const pid = state.ui.selectedProjectId;
   const proj = state.projects.find(p=>p.id===pid);
@@ -220,7 +220,6 @@ function openDeleteProjectModal(store, triggerBtn){
   );
 
   const actions = el('div', { className:'row', style:'margin-top:10px;justify-content:space-between' });
-
   const archiveBtn = el('button', { className:'ghost' }, 'Archive instead');
   archiveBtn.onclick = ()=>{
     store.update(s=>({ projects: s.projects.map(p=>p.id===pid? { ...p, status:'archived' } : p) }));
@@ -242,7 +241,6 @@ function openDeleteProjectModal(store, triggerBtn){
   input.addEventListener('input', ()=>{ del.disabled = input.value.trim() !== proj.job_number; });
 
   del.onclick = ()=>{
-    // Capture snapshot for undo
     const snapshot = store.get();
     const toRestore = {
       project: proj,
@@ -250,8 +248,6 @@ function openDeleteProjectModal(store, triggerBtn){
       notes: snapshot.notes.filter(n=>n.project_id===pid),
       wasSelected: snapshot.ui.selectedProjectId === pid
     };
-
-    // hard delete: project + all related tasks/notes
     store.update(s=>{
       const others = s.projects.filter(p=>p.id !== pid);
       const nextSelected = others[0]?.id || null;
@@ -263,14 +259,11 @@ function openDeleteProjectModal(store, triggerBtn){
       };
     });
     closeModal();
-
-    // Offer Undo via toast
     toast(`Deleted project ${proj.job_number} — ${proj.name}`, {
       type:'warn',
       action: {
         label:'Undo',
         onClick: ()=>{
-          const cur = store.get();
           store.update(s=>({
             projects: [toRestore.project, ...s.projects],
             tasks: [...s.tasks, ...toRestore.tasks],
@@ -283,16 +276,25 @@ function openDeleteProjectModal(store, triggerBtn){
     });
   };
 
-  // Focus trap + Escape
+  trapFocus(modal, panel);
+  function closeModal(){
+    modal.remove();
+  }
+}
+
+/* ---------------- Focus Trap Helper ---------------- */
+function trapFocus(modal, panel){
   const prev = document.activeElement;
   const focusables = () => Array.from(panel.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
     .filter(el => !el.hasAttribute('disabled'));
   (focusables()[0] || panel).focus();
 
   function onKey(e){
-    if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
+    if (e.key === 'Escape') { e.preventDefault(); modal.remove(); }
     if (e.key === 'Enter' && e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) {
-      e.preventDefault(); del.click();
+      e.preventDefault();
+      const primary = panel.querySelector('button.primary:not(:disabled)');
+      primary?.click();
     }
     if (e.key === 'Tab'){
       const els = focusables(); if (!els.length) return;
@@ -305,10 +307,5 @@ function openDeleteProjectModal(store, triggerBtn){
     }
   }
   modal.addEventListener('keydown', onKey);
-
-  function closeModal(){
-    modal.removeEventListener('keydown', onKey);
-    modal.remove();
-    if (prev && typeof prev.focus === 'function') prev.focus();
-  }
+  modal.addEventListener('remove', ()=>{ if (prev && typeof prev.focus === 'function') prev.focus(); });
 }

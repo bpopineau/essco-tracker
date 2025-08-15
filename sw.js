@@ -65,7 +65,13 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(networkFirstNavigation(event));
     return;
   }
-
+  // Allow page to tell the waiting worker to take over
+  self.addEventListener('message', (event) => {
+    if (event?.data?.type === 'SKIP_WAITING') {
+      self.skipWaiting();
+    }
+  });
+  
   const url = new URL(req.url);
   const isSameOrigin = url.origin === ORIGIN;
 

@@ -1,7 +1,6 @@
-
 // src/utils/date.js
 
-const MS_DAY = 86_400_000;
+export const MS_DAY = 86_400_000;
 
 /** Pad to 2 digits */
 const p2 = (n) => (n < 10 ? '0' + n : '' + n);

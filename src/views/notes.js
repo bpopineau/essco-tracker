@@ -1,6 +1,6 @@
 // src/views/notes.js
 import { clear, el, highlightText, toast } from '../ui/dom.js';
-import { fmtDate, todayStr } from '../utils/date.js';
+import { fmtDate, parseDate, todayStr } from '../utils/date.js';
 
 export function mountNotes(root, store){
   const makeId = (prefix)=> prefix + Math.random().toString(36).slice(2,8);
@@ -12,10 +12,11 @@ export function mountNotes(root, store){
       // pinned first, then newest meeting_date first
       const pinCmp = nBool(b.pinned) - nBool(a.pinned);
       if (pinCmp) return pinCmp;
-      return String(b.meeting_date || '').localeCompare(String(a.meeting_date || ''));
+      const da = parseDate(a.meeting_date || '');
+      const db = parseDate(b.meeting_date || '');
+      return db - da;
     });
 
-  // ensure UI bits exist
   const ensureUI = ()=>{
     const s = store.get(); const ui = s.ui || {};
     let changed = false;
@@ -38,7 +39,6 @@ export function mountNotes(root, store){
     const left = el('div', { className:'card' });
     left.appendChild(el('h3', { textContent:'Meeting notes' }));
 
-    // search box
     const searchRow = el('div', { className:'row', style:'gap:8px;margin-bottom:6px' });
     const search = el('input', { placeholder:'Search notes…', value: searchTerm, style:'min-width:220px' });
     const clearBtn = el('button', { className:'ghost', textContent:'Clear' });
@@ -65,11 +65,12 @@ export function mountNotes(root, store){
     wrap.append(left, right);
     root.appendChild(wrap);
 
-    // filtered list
+    /* ---- filtered list ---- */
     const all = projectNotes(pid);
     const arr = searchTerm
       ? all.filter(n => (n.body || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        (n.id || '').toLowerCase().includes(searchTerm.toLowerCase()) )
+                        (n.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        (n.meeting_date || '').toLowerCase().includes(searchTerm.toLowerCase()))
       : all;
 
     notesList.replaceChildren();
@@ -82,13 +83,13 @@ export function mountNotes(root, store){
       // header
       const header = el('div', { style:'display:flex;justify-content:space-between;gap:8px;align-items:center' });
       const leftH = el('div');
-      leftH.append(
-        el('strong', { title: n.meeting_date ? fmtDate(n.meeting_date) : '', textContent: n.meeting_date ? fmtDate(n.meeting_date) : '—' }),
-        el('span', { className:'muted', style:'margin-left:6px' }, `(${linkedCount(n)} task${linkedCount(n)===1?'':'s'})`)
-      );
+      const dateEl = el('strong', { title: n.meeting_date ? fmtDate(n.meeting_date) : '', textContent: n.meeting_date ? fmtDate(n.meeting_date) : '—' });
+      const countEl = el('span', { className:'muted', style:'margin-left:6px' }, `(${linkedCount(n)} task${linkedCount(n)===1?'':'s'})`);
+      leftH.append(dateEl, countEl);
 
       const rightH = el('div', { className:'row', style:'gap:6px;align-items:center' });
       const idPill = el('span', { className:'pill', title:'Note id', textContent:`Note ${n.id}` });
+
       const pinBtn = el('button', {
         className:'btn-icon ghost',
         title: n.pinned ? 'Unpin note' : 'Pin note',
@@ -100,7 +101,7 @@ export function mountNotes(root, store){
         className:'btn-icon ghost',
         title: isEditing ? 'Cancel edit' : 'Edit note',
         'aria-label': isEditing ? 'Cancel edit' : 'Edit note',
-        onclick: ()=> isEditing ? cancelEdit() : startEdit(n, editBtn)
+        onclick: ()=> isEditing ? cancelEdit(editBtn) : startEdit(n, editBtn)
       }, isEditing ? '✖' : '✏️');
 
       const delBtn = el('button', {
@@ -113,9 +114,14 @@ export function mountNotes(root, store){
       rightH.append(idPill, pinBtn, editBtn, delBtn);
       header.append(leftH, rightH);
 
+      // highlight in header if search term
+      if (searchTerm) {
+        highlightText(dateEl, searchTerm);
+        highlightText(idPill, searchTerm);
+      }
+
       // body
       const bodyWrap = el('div', { style:'margin-top:6px' });
-
       if (isEditing) {
         const ta = el('textarea', { rows:10, style:'width:100%;margin-bottom:8px' });
         ta.value = n.body || '';
@@ -125,9 +131,6 @@ export function mountNotes(root, store){
         const saveEd = el('button', { className:'primary' }, 'Save');
         const cancelEd = el('button', { className:'ghost' }, 'Cancel');
 
-        actions.append(cancelEd, saveEd);
-
-        // keyboard handlers
         ta.addEventListener('keydown', (e)=>{
           if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); commitEdit(ta.value, n, editBtn); }
           else if (e.key === 'Escape') { e.preventDefault(); cancelEdit(editBtn); }
@@ -135,13 +138,13 @@ export function mountNotes(root, store){
         saveEd.onclick = ()=> commitEdit(ta.value, n, editBtn);
         cancelEd.onclick = ()=> cancelEdit(editBtn);
 
+        actions.append(cancelEd, saveEd);
         bodyWrap.append(hint, ta, actions);
-        // focus into textarea
         setTimeout(()=> ta.focus(), 0);
       } else {
         const bodyEl = el('div', { style:'white-space:pre-wrap' });
         linkifyNoteBody(bodyEl, n.body || '');
-        if (state.ui.noteSearch) highlightText(bodyEl, state.ui.noteSearch);
+        if (searchTerm) highlightText(bodyEl, searchTerm);
         bodyWrap.append(bodyEl);
       }
 
@@ -172,7 +175,6 @@ export function mountNotes(root, store){
   function startEdit(note, trigger){
     const ui = store.get().ui || {};
     store.set({ ui: { ...ui, editingNoteId: note.id } });
-    // focus restore handled on cancel/save
   }
 
   function cancelEdit(trigger){
@@ -193,6 +195,24 @@ export function mountNotes(root, store){
   }
 
   /* ---------- other helpers ---------- */
+  function deleteNote(note){
+    const s = store.get();
+    store.update(st => ({
+      notes: st.notes.filter(n => n.id !== note.id),
+      ui: { ...st.ui, editingNoteId: st.ui.editingNoteId === note.id ? null : st.ui.editingNoteId }
+    }));
+    toast(`Deleted note ${note.id}`, {
+      type: 'warn',
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          store.update(st => ({ notes: [...st.notes, note] }));
+          toast('Note restored', { type:'success' });
+        }
+      }
+    });
+  }
+
   function linkedCount(n){
     const s = store.get();
     return s.tasks.filter(t=>t.project_id===n.project_id && t.note_id===n.id).length;
@@ -204,7 +224,6 @@ export function mountNotes(root, store){
     }));
   }
 
-  // Make #tokens clickable to jump to Tasks tab with a search filter applied.
   function linkifyNoteBody(container, text){
     container.replaceChildren();
     if (!text) return container.appendChild(document.createTextNode(''));
@@ -226,18 +245,15 @@ export function mountNotes(root, store){
         }
       }, `#${token}`);
       container.appendChild(chip);
-
       idx = m.index + m[0].length;
     }
     const rest = text.slice(idx);
     if (rest) container.appendChild(document.createTextNode(rest));
   }
 
-  // subscribe to relevant changes
   store.subscribe((_, keys)=>{
     if (keys.some(k=>['notes','tasks','ui'].includes(k))) render();
   });
 
-  // initial paint
   render();
 }

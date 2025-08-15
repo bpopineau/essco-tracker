@@ -19,10 +19,9 @@ export function mountSidebar(listEl, searchEl, store){
     addBtn.addEventListener('click', ()=> openCreateProjectModal(store, addBtn));
   }
 
-  // Delegated: select project
+  // Delegated: select project (mouse)
   const offSelect = on(listEl, 'click', '.proj', (e) => {
-    // Ignore clicks on controls inside the project item
-    if (e.target.closest('[data-del]')) return;
+    if (e.target.closest('[data-del]')) return; // ignore delete clicks
     const item = e.delegateTarget;
     const id = item?.dataset?.id;
     if (!id) return;
@@ -30,23 +29,43 @@ export function mountSidebar(listEl, searchEl, store){
     store.set({ ui: { ...s.ui, selectedProjectId: id }});
   });
 
-  // Delegated: delete project with Undo
+  // Delegated: select project (keyboard: Enter/Space)
+  const offSelectKey = on(listEl, 'keydown', '.proj', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    const item = e.delegateTarget;
+    const id = item?.dataset?.id;
+    if (!id) return;
+    const s = store.get();
+    store.set({ ui: { ...s.ui, selectedProjectId: id }});
+  });
+
+  // Delegated: delete project with Undo (restores tasks/notes too)
   const offDelete = on(listEl, 'click', '[data-del]', (e) => {
     e.stopPropagation();
     const item = e.target.closest('.proj');
     const id = item?.dataset?.id;
     if (!id) return;
+
     const s = store.get();
     const proj = s.projects.find(p => p.id === id);
     if (!proj) return;
 
-    // Remove now
-    const wasSelected = s.ui.selectedProjectId === id;
-    const remaining = s.projects.filter(p => p.id !== id);
-    const nextSelected = wasSelected && remaining.length ? remaining[0].id : (wasSelected ? null : s.ui.selectedProjectId);
+    // Gather related data so undo can restore cleanly
+    const tasksToRemove = s.tasks.filter(t => t.project_id === id);
+    const notesToRemove = s.notes.filter(n => n.project_id === id);
 
+    const wasSelected   = s.ui.selectedProjectId === id;
+    const remainingProj = s.projects.filter(p => p.id !== id);
+    const nextSelected  = wasSelected
+      ? (remainingProj[0]?.id ?? null)
+      : s.ui.selectedProjectId;
+
+    // Remove now
     store.update(st => ({
       projects: st.projects.filter(p => p.id !== id),
+      tasks: st.tasks.filter(t => t.project_id !== id),
+      notes: st.notes.filter(n => n.project_id !== id),
       ui: { ...st.ui, selectedProjectId: nextSelected }
     }));
 
@@ -56,9 +75,10 @@ export function mountSidebar(listEl, searchEl, store){
       action: {
         label: 'Undo',
         onClick: () => {
-          const cur = store.get();
           store.update(st => ({
             projects: [proj, ...st.projects],
+            tasks: [...st.tasks, ...tasksToRemove],
+            notes: [...st.notes, ...notesToRemove],
             ui: { ...st.ui, selectedProjectId: wasSelected ? proj.id : st.ui.selectedProjectId }
           }));
           toast('Restored', { type:'success' });
@@ -80,8 +100,14 @@ export function mountSidebar(listEl, searchEl, store){
       .forEach(p=>{
         const active = p.id === state.ui.selectedProjectId;
 
-        // Build item DOM safely (so we can highlight text nodes)
-        const item = el('div', { className: 'proj' + (active ? ' active' : ''), dataset:{ id: p.id } });
+        // Build item DOM (focusable & labelled)
+        const item = el('div', {
+          className: 'proj' + (active ? ' active' : ''),
+          dataset:{ id: p.id },
+          role: 'button',
+          tabIndex: 0,
+          ariaSelected: String(active)
+        });
 
         const top = el('div', { style:'display:flex;justify-content:space-between;align-items:center;gap:8px' });
         const title = el('div');
@@ -93,7 +119,12 @@ export function mountSidebar(listEl, searchEl, store){
 
         const right = el('div', { className:'row', style:'gap:6px;align-items:center' });
         const statusChip = el('span', { className:'pill', textContent: p.status, ariaLabel:`Status: ${p.status}` });
-        const delBtn = el('button', { className:'btn-icon ghost', title:'Delete project', 'aria-label':'Delete project', dataset:{ del:'' } }, '🗑');
+        const delBtn = el('button', {
+          className:'btn-icon ghost',
+          title:'Delete project',
+          'aria-label':'Delete project',
+          dataset:{ del:'' }
+        }, '🗑');
 
         right.append(statusChip, delBtn);
         top.append(title, right);
@@ -127,7 +158,7 @@ export function mountSidebar(listEl, searchEl, store){
   render();
 
   // Optional: cleanup if you ever unmount the sidebar
-  // return () => { offSelect(); offDelete(); };
+  // return () => { offSelect(); offSelectKey(); offDelete(); };
 }
 
 /* ----------------- Modal: Create Project ----------------- */
@@ -225,6 +256,6 @@ function openCreateProjectModal(store, triggerBtn){
     toast('Project created', { type:'success', action:{ label:'Open', onClick:()=> {
       const ui = store.get().ui || {};
       store.set({ ui: { ...ui, selectedProjectId: proj.id } });
-    }}});
+    } }});
   };
 }

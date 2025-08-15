@@ -125,8 +125,8 @@ export function mountInsights(root, store){
     ctx.lineTo(w - padR, h - padB + 0.5);
     ctx.stroke();
 
-    function yFor(val){ return h - padB - (val/max)*chartH; }
-    function xFor(i){ return padL + i*step; }
+    const yFor = (val) => h - padB - (val/max)*chartH;
+    const xFor = (i)   => padL + i*step;
 
     // line drawer
     function plotLine(data, stroke){
@@ -149,9 +149,14 @@ export function mountInsights(root, store){
     ctx.fillStyle = colors.muted;
     ctx.font = '11px system-ui';
     ctx.textAlign = 'left';
-    ctx.fillText(labels[0].slice(5), padL, h-6); // 'MM-DD'
+    if (labels.length) ctx.fillText(labels[0].slice(5), padL, h-6); // 'MM-DD'
     ctx.textAlign = 'right';
-    ctx.fillText(labels[labels.length-1].slice(5), w - padR, h-6);
+    if (labels.length) ctx.fillText(labels[labels.length-1].slice(5), w - padR, h-6);
+  }
+
+  function chip(txt, bg){
+    const s = el('span', { className:'pill', style:`background:${bg};border-color:rgba(0,0,0,.25)` }, txt);
+    return s;
   }
 
   function render(){
@@ -170,6 +175,8 @@ export function mountInsights(root, store){
       const linked = notes.filter(n => tasks.some(t => t.note_id === n.id)).length;
       return notes.length ? Math.round((linked/notes.length)*100) : 0;
     })();
+
+    const colors = getVars();
 
     // KPI tiles
     const insights = el('div', { className:'insights' });
@@ -198,10 +205,23 @@ export function mountInsights(root, store){
     // Workload card
     const cardWork = el('div', { className:'card' });
     cardWork.append(el('h3', { textContent: 'Workload' }));
-    const canvasWork = el('canvas', { id:'workload', height:220 });
-    cardWork.append(canvasWork);
 
-    const colors = getVars();
+    // Legend (overdue / soon / ok)
+    const legendWork = el('div', { className:'row', style:'gap:8px;margin-bottom:6px' });
+    legendWork.append(
+      chip('Overdue', colors.red),
+      chip('Soon', colors.amber),
+      chip('OK', colors.green)
+    );
+    cardWork.append(legendWork);
+
+    const canvasWork = el('canvas', {
+      id:'workload',
+      height:220,
+      role:'img',
+      'aria-label':'Workload per person: stacked bars (red overdue, amber soon, green ok)'
+    });
+    cardWork.append(canvasWork);
 
     if (!open.length) {
       cardWork.append(el('div', { className:'empty', style:'margin-top:8px', textContent:'No open tasks to chart.' }));
@@ -212,20 +232,26 @@ export function mountInsights(root, store){
       drawWorkload(canvasWork, buckets, colors);
       cardWork.append(el('div', {
         className:'muted', style:'margin-top:6px'
-      }, 'Open tasks by person (colors: overdue / soon / ok).'));
+      }, 'Open tasks by person.'));
     }
 
     // Trend card
     const cardTrend = el('div', { className:'card' });
     cardTrend.append(el('h3', { textContent:'Due trend (last 14 days)' }));
-    const legend = el('div', { className:'row', style:'gap:8px;margin-bottom:6px' });
-    legend.append(
-      el('span', { className:'pill', textContent:'Open (by due)' }),
-      el('span', { className:'pill', textContent:'Done (by due)' })
-    );
-    cardTrend.append(legend);
 
-    const canvasTrend = el('canvas', { id:'trend', height:140 });
+    const legendTrend = el('div', { className:'row', style:'gap:8px;margin-bottom:6px' });
+    legendTrend.append(
+      chip('Open (by due)', colors.amber),
+      chip('Done (by due)', colors.green)
+    );
+    cardTrend.append(legendTrend);
+
+    const canvasTrend = el('canvas', {
+      id:'trend',
+      height:140,
+      role:'img',
+      'aria-label':'Sparkline of tasks by due date over the last 14 days (open vs done)'
+    });
     cardTrend.append(canvasTrend);
     cardTrend.append(el('div', {
       className:'muted', style:'margin-top:6px'

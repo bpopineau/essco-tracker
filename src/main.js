@@ -4,7 +4,7 @@
 import { buildSchema } from './schema.js';
 import { storage } from './storage.js';
 import { createStore } from './store.js';
-import { toast } from './ui/dom.js'; // <-- added
+import { toast } from './ui/dom.js';
 import { BUILD_VERSION } from './version.js';
 import { mountHeader } from './views/header.js';
 import { mountInsights } from './views/insights.js';
@@ -24,6 +24,12 @@ const schema = buildSchema(DEV_MODE);
   // Persist on changes (debounced inside storage.save)
   store.subscribe((state)=> storage.save(state));
 
+  // Ensure a selected project on first load/import
+  if (!store.get().ui.selectedProjectId && store.get().projects.length) {
+    const first = store.get().projects[0].id;
+    store.set({ ui: { ...store.get().ui, selectedProjectId: first } });
+  }
+
   // Sidebar
   mountSidebar(
     document.getElementById('projList'),
@@ -42,7 +48,7 @@ const schema = buildSchema(DEV_MODE);
     newTaskBtn: document.getElementById('newTaskBtn'),
   }, store);
 
-  // Dev-only Reset Seed button (you already had this pattern)
+  // Dev-only Reset Seed button
   if (DEV_MODE) {
     const actionsRow = document.querySelector('header .row');
     if (actionsRow) {
@@ -84,11 +90,38 @@ const schema = buildSchema(DEV_MODE);
     const active = state.ui.activeTab;
     const sections = { notes:'#notes', tasks:'#tasks', insights:'#insights' };
     for (const [k, sel] of Object.entries(sections)){
-      document.querySelector(sel).style.display = (k===active) ? 'grid' : 'none';
-      document.querySelector(`[data-tab="${k}"]`)?.classList.toggle('active', k===active);
-      document.querySelector(`[data-tab="${k}"]`)?.setAttribute('aria-selected', String(k===active));
+      const pane = document.querySelector(sel);
+      if (pane) pane.style.display = (k===active) ? 'grid' : 'none';
+      const tabEl = document.querySelector(`[data-tab="${k}"]`);
+      tabEl?.classList.toggle('active', k===active);
+      tabEl?.setAttribute('aria-selected', String(k===active));
     }
     if (active === 'insights') window.dispatchEvent(new Event('resize'));
+  });
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+    const active = store.get().ui.activeTab;
+
+    // Focus project search
+    if (e.key === '/') {
+      const box = document.getElementById('search');
+      if (box) { e.preventDefault(); box.focus(); box.select?.(); }
+      return;
+    }
+    // New note
+    if (e.key.toLowerCase() === 'n') {
+      if (active !== 'notes') store.set({ ui: { ...store.get().ui, activeTab: 'notes' } });
+      document.getElementById('newNoteBtn')?.click();
+      return;
+    }
+    // Quick add task
+    if (e.key.toLowerCase() === 't') {
+      if (active !== 'tasks') store.set({ ui: { ...store.get().ui, activeTab: 'tasks' } });
+      document.getElementById('newTaskBtn')?.click();
+      return;
+    }
   });
 
   // Initial render
@@ -128,7 +161,6 @@ const schema = buildSchema(DEV_MODE);
 })();
 
 /* ------------ helpers ------------ */
-
 function showUpdateToast(reg){
   toast('An update is ready.', {
     type: 'info',
