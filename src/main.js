@@ -1,4 +1,6 @@
 // src/main.js
+import { DEV } from './config.js';
+if (DEV) console.debug('[DEV] ESSCO Tracker booting…');
 
 // ---------- Imports ----------
 import { buildSchema } from './schema.js';
