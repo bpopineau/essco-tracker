@@ -1,28 +1,7 @@
 #!/bin/sh
-# Cross-platform pre-commit launcher for the PowerShell script in .githooks/pre-commit.ps1
-# - Prefers PowerShell 7 (pwsh); falls back to Windows PowerShell (powershell.exe)
-# - Converts POSIX path to Windows path when running under Git Bash (cygpath)
-
-set -eu
-
-# Resolve repo root and ps1 path
-repo_root="$(git rev-parse --show-toplevel)"
-ps1_rel=".githooks/pre-commit.ps1"
-ps1_path="$repo_root/$ps1_rel"
-
-# If running under Git Bash on Windows, convert path for PowerShell
-ps1_path_win="$ps1_path"
-if command -v cygpath >/dev/null 2>&1; then
-  ps1_path_win="$(cygpath -aw "$ps1_path")"
-fi
-
-# Prefer pwsh (PowerShell 7+), otherwise Windows PowerShell
+# Prefer pwsh if available; fall back to Windows powershell.exe
 if command -v pwsh >/dev/null 2>&1; then
-  exec pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$ps1_path_win"
-elif command -v powershell >/dev/null 2>&1; then
-  exec powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$ps1_path_win"
+  exec pwsh -NoProfile -File "$(git rev-parse --show-toplevel)/.githooks/pre-commit.ps1"
 else
-  echo "Error: PowerShell (pwsh or powershell.exe) not found in PATH." >&2
-  echo "Install PowerShell 7+ or ensure Windows PowerShell is available." >&2
-  exit 127
+  exec powershell -NoProfile -ExecutionPolicy Bypass -File "$(git rev-parse --show-toplevel)/.githooks/pre-commit.ps1"
 fi
