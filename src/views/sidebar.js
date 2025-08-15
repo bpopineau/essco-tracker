@@ -1,3 +1,4 @@
+
 // src/views/sidebar.js
 import { clear, el } from '../ui/dom.js';
 import { fmtDate } from '../utils/date.js';

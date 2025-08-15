@@ -1,3 +1,4 @@
+
 // src/views/notes.js
 import { clear, el } from '../ui/dom.js';
 import { fmtDate, todayStr } from '../utils/date.js';

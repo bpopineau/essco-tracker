@@ -1,3 +1,4 @@
+// sw.js
 /* sw.js — versioned via ?v=... in register() */
 const VERSION = new URL(self.location).searchParams.get('v') || 'dev';
 const CACHE   = `essco-cache-${VERSION}`;

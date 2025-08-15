@@ -1,3 +1,4 @@
+
 // src/views/insights.js
 import { clear, el } from '../ui/dom.js';
 

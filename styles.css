@@ -43,15 +43,27 @@
   --control-bg:#0f1622;        /* replaces #0c1015 / #1c2533 */
   --control-bg-hover:#1a2231;
   --control-border:var(--border);
+
+  /* Radius + shadow tokens (optional) */
+  --radius-8:8px;
+  --radius-10:10px;
+  --radius-12:12px;
+  --shadow-1:0 1px 2px rgba(0,0,0,.25);
+  --shadow-2:0 6px 18px rgba(0,0,0,.25);
 }
 
 *{ box-sizing:border-box }
+::selection{ background:var(--brand-700); color:#fff }
+
+html{ color-scheme: dark }
 
 body{
   margin:0;
   font:14px/1.4 system-ui, Segoe UI, Roboto, Arial;
   color:var(--text);
   background:var(--bg);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
 }
 
 .app{ display:grid; grid-template-columns:280px 1fr; height:100vh }
@@ -67,7 +79,7 @@ aside{
 .badge{ background:var(--chip); border:1px solid var(--border); color:var(--muted) }
 
 /* Links */
-a{ color:var(--brand-400) }
+a{ color:var(--brand-400); text-decoration:none }
 a:hover{ color:var(--brand-500) }
 
 /* Focus ring for keyboard users */
@@ -82,6 +94,7 @@ main header{ background:linear-gradient(180deg,var(--panel),transparent) }
 
 .brand .pill{ margin-left:auto }
 
+/* Search */
 .search{ padding:0 16px 12px }
 .search input{
   width:100%;
@@ -92,14 +105,17 @@ main header{ background:linear-gradient(180deg,var(--panel),transparent) }
   color:var(--text);
 }
 
+/* List */
 .list{ overflow:auto; padding:8px }
 
+/* Project items */
 .proj{
   padding:10px 12px; margin:6px 0;
   border:1px solid var(--border);
   border-radius:10px; background:var(--card);
   cursor:pointer;
 }
+.proj:hover{ box-shadow: var(--shadow-1) }
 .proj.active{ outline:2px solid var(--brand) }
 
 .proj .meta{
@@ -107,8 +123,10 @@ main header{ background:linear-gradient(180deg,var(--panel),transparent) }
   display:flex; gap:8px; flex-wrap:wrap;
 }
 
+/* Main column */
 main{ display:flex; flex-direction:column; min-width:0 }
 
+/* Header */
 header{
   display:flex; gap:16px; align-items:center; justify-content:space-between;
   padding:16px; border-bottom:1px solid var(--border);
@@ -122,27 +140,39 @@ header{
   background:var(--chip); border:1px solid var(--border); color:var(--muted);
 }
 
+/* Tabs */
 .tabs{ display:flex; gap:8px }
 .tab{
   padding:8px 12px; border-radius:8px;
   background:var(--chip); border:1px solid var(--border);
   cursor:pointer;
+  transition: background .15s, border-color .15s, color .15s;
 }
+.tab:where(:hover){ background:#243045 }
 .tab.active{
   background:#1f2736;
   color:var(--text);
   border-color:#364055;
 }
+@supports (background: color-mix(in srgb, white 10%, black)){
+  .tab.active{
+    background: color-mix(in srgb, var(--brand-600) 18%, var(--chip));
+    border-color: color-mix(in srgb, var(--brand-700) 40%, var(--border));
+  }
+}
 
+/* Content */
 .content{
   overflow:auto; padding:16px;
   display:grid; gap:16px; grid-template-rows:auto 1fr;
 }
 
+/* Layout helpers */
 .grid{ display:grid; gap:12px }
-
 .row{ display:flex; gap:12px; flex-wrap:wrap; align-items:center }
+.spacer{ flex:1 }
 
+/* Cards */
 .card{
   background:var(--panel);
   border:1px solid var(--border);
@@ -156,6 +186,8 @@ button, select, input, textarea{
   background:var(--control-bg);
   border:1px solid var(--control-border);
   border-radius:10px; padding:8px 10px;
+  font:inherit;
+  transition: background .15s, border-color .15s, color .15s, transform .08s;
 }
 button{
   background:var(--control-bg);
@@ -163,6 +195,7 @@ button{
   cursor:pointer;
 }
 button:hover{ background:var(--control-bg-hover) }
+button:active{ transform: translateY(0.5px) }
 
 button.primary{
   background:var(--brand-600);
@@ -170,13 +203,19 @@ button.primary{
   color:#0b1118;
 }
 button.primary:hover{ background:var(--brand-700) }
-button.primary:active{ background:var(--brand-700); transform:translateY(0.5px) }
+button.primary:active{ background:var(--brand-700) }
 
 button.ghost{
   background:var(--chip);
   border-color:var(--border);
 }
 button.ghost:hover{ background:#243045 }
+
+/* Icon-only buttons */
+.btn-icon{
+  width:32px; height:32px; display:inline-grid; place-items:center;
+  padding:0; border-radius:8px;
+}
 
 /* Pills: vertical centering + consistent width */
 .pill{
@@ -187,10 +226,16 @@ button.ghost:hover{ background:#243045 }
 }
 
 /* Semantic pill tints (soft, readable) */
-.chip-ok   { background: color-mix(in srgb, var(--ok-500) 16%, transparent);   border-color: color-mix(in srgb, var(--ok-500) 35%, transparent);   color:#bff2d6 }
-.chip-warn { background: color-mix(in srgb, var(--warn-500) 16%, transparent); border-color: color-mix(in srgb, var(--warn-500) 35%, transparent); color:#ffe6b0 }
-.chip-bad  { background: color-mix(in srgb, var(--bad-500) 16%, transparent);  border-color: color-mix(in srgb, var(--bad-500) 35%, transparent);  color:#ffbeb4 }
+.chip-ok   { background: rgba(46,204,113, .16); border-color: rgba(46,204,113,.35); color:#bff2d6 }
+.chip-warn { background: rgba(244,180,  0, .16); border-color: rgba(244,180,0,.35); color:#ffe6b0 }
+.chip-bad  { background: rgba(231, 76, 60, .16); border-color: rgba(231, 76,60,.35); color:#ffbeb4 }
+@supports (background: color-mix(in srgb, black 10%, white)){
+  .chip-ok   { background: color-mix(in srgb, var(--ok-500)   16%, transparent); border-color: color-mix(in srgb, var(--ok-500)   35%, transparent) }
+  .chip-warn { background: color-mix(in srgb, var(--warn-500) 16%, transparent); border-color: color-mix(in srgb, var(--warn-500) 35%, transparent) }
+  .chip-bad  { background: color-mix(in srgb, var(--bad-500)  16%, transparent); border-color: color-mix(in srgb, var(--bad-500)  35%, transparent) }
+}
 
+/* Kanban */
 .kanban{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; height:100% }
 
 .col{
@@ -243,13 +288,12 @@ tbody tr td:last-child{
 }
 .note small{ color:var(--muted) }
 
+/* Empty states */
 .empty{
   color:var(--muted);
   border:1px dashed var(--border);
   padding:16px; border-radius:12px; text-align:center;
 }
-
-.spacer{ flex:1 }
 
 /* Keep kanban drop zones compact */
 .drop{
@@ -276,6 +320,7 @@ tbody tr td:last-child{
 .modal > .panel{
   background:var(--panel); border:1px solid var(--border);
   border-radius:12px; min-width:360px; max-width:560px; padding:14px;
+  box-shadow: var(--shadow-2);
 }
 .modal h3{ margin:0 0 8px 0; color:#cfe0ff }
 .modal .row{ display:flex; gap:8px; align-items:center; justify-content:space-between }
@@ -287,6 +332,62 @@ tbody tr td:last-child{
 }
 .att-item .name{
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:280px;
+}
+
+/* Snackbar / toast (for undo, updates) */
+.snackbar{
+  position:fixed; inset-inline:0; inset-block-end:16px;
+  display:grid; place-items:center; gap:8px;
+  pointer-events:none; z-index:10000;
+}
+.toast{
+  pointer-events:auto;
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:10px; padding:10px 12px;
+  box-shadow: var(--shadow-2);
+  display:flex; gap:12px; align-items:center;
+}
+.toast.success{ border-color: color-mix(in srgb, var(--ok-500) 40%, var(--border)) }
+.toast.warn   { border-color: color-mix(in srgb, var(--warn-500) 40%, var(--border)) }
+.toast.error  { border-color: color-mix(in srgb, var(--bad-500) 40%, var(--border)) }
+
+/* Utilities */
+.muted{ color:var(--muted) }
+.hide{ display:none !important }
+.sr-only, .visually-hidden{
+  position:absolute !important; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0;
+}
+mark{
+  background: rgba(255,176,32,.24);
+  color: var(--text);
+  border-radius:2px; padding:0 2px;
+}
+kbd{
+  display:inline-block; padding:2px 6px; border-radius:6px;
+  background:var(--chip); border:1px solid var(--border);
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,.25);
+  font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  color:var(--text);
+}
+
+/* Scrollbars (WebKit) */
+*::-webkit-scrollbar{ width:10px; height:10px }
+*::-webkit-scrollbar-track{ background:var(--panel) }
+*::-webkit-scrollbar-thumb{ background:var(--border); border-radius:10px }
+*::-webkit-scrollbar-thumb:hover{ background:var(--control-bg-hover) }
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce){
+  *{ animation:none !important; transition:none !important; scroll-behavior:auto !important }
+}
+
+/* High contrast mode adjustments */
+@media (forced-colors: active){
+  .tab, .pill, .badge, .card, .proj, .note, .toast{
+    border-style: solid;
+  }
 }
 
 /* Responsive */
