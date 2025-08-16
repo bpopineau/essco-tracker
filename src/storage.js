@@ -23,7 +23,9 @@ export const storage = {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(schema));
-        return structuredClone ? structuredClone(schema) : safeParse(JSON.stringify(schema), schema);
+        return typeof structuredClone === 'function'
+          ? structuredClone(schema)
+          : safeParse(JSON.stringify(schema), schema);
       }
 
       const parsed = safeParse(raw, {});
@@ -43,7 +45,9 @@ export const storage = {
       return stable;
     } catch {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(schema));
-      return structuredClone ? structuredClone(schema) : safeParse(JSON.stringify(schema), schema);
+      return typeof structuredClone === 'function'
+        ? structuredClone(schema)
+        : safeParse(JSON.stringify(schema), schema);
     }
   },
 
