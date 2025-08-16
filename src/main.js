@@ -33,6 +33,7 @@ const schema = buildSchema(DEV_MODE);
     ignoreKeysPrefix: ['ui'],
     persistFilter: (s) => {
       const { ui, ...rest } = s;
+      void ui;
       return rest;
     }
   });
@@ -86,15 +87,15 @@ const schema = buildSchema(DEV_MODE);
   mountInsights(document.getElementById('panel-insights'), store);
 
   // Tabs (top-level app tabs)
-  const tabs = document.querySelectorAll('.tabs .tab');
-  tabs.forEach(t => {
+  /** @type {NodeListOf<HTMLElement>} */
+  (document.querySelectorAll('.tabs .tab')).forEach((t) => {
     t.addEventListener('click', () => {
       const tab = t.dataset.tab;
       const ui = store.get().ui || {};
       store.set({ ui: { ...ui, activeTab: tab } });
     });
     // Keyboard activate on Space/Enter
-    t.addEventListener('keydown', (e) => {
+    t.addEventListener('keydown', (/** @type {KeyboardEvent} */ e) => {
       if (e.key === ' ' || e.key === 'Space' || e.key === 'Spacebar' || e.key === 'Enter') {
         e.preventDefault();
         t.click();
@@ -111,8 +112,8 @@ const schema = buildSchema(DEV_MODE);
       insights: { panel: '#panel-insights', tab: '#tab-insights' }
     };
     for (const [k, { panel, tab }] of Object.entries(sections)) {
-      const $panel = document.querySelector(panel);
-      const $tab   = document.querySelector(tab);
+      const $panel = /** @type {HTMLElement | null} */ (document.querySelector(panel));
+      const $tab   = /** @type {HTMLElement | null} */ (document.querySelector(tab));
       const isActive = (k === active);
 
       // Panel visibility + a11y
@@ -186,7 +187,7 @@ function showUpdateToast (reg) {
       onClick: () => {
         try {
           reg.waiting?.postMessage?.({ type: 'SKIP_WAITING' });
-        } catch {}
+        } catch { /* noop */ }
       }
     }
   });

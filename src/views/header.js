@@ -36,7 +36,8 @@ export function mountHeader(refs, store){
   const headerEl = projTitleEl.closest('header') || document.querySelector('header');
   if (headerEl && !document.getElementById('attBanner')) {
     try {
-      const supported = !!(window.fileDB && window.fileDB.available && window.fileDB.available());
+      const w = /** @type {any} */ (window);
+      const supported = !!(w.fileDB && w.fileDB.available && w.fileDB.available());
       if (!supported) {
         const banner = el('div', {
           id:'attBanner',
@@ -61,7 +62,7 @@ export function mountHeader(refs, store){
       style:'margin-left:8px'
     });
     actionsRow.appendChild(delBtn);
-    delBtn.addEventListener('click', ()=> openDeleteProjectModal(store, delBtn));
+    delBtn.addEventListener('click', ()=> openDeleteProjectModal(store));
   }
 
   function render(){
@@ -284,7 +285,7 @@ function openDeleteProjectModal(store){
 
 /* ---------------- Focus Trap Helper ---------------- */
 function trapFocus(modal, panel){
-  const prev = document.activeElement;
+  const prev = /** @type {HTMLElement|null} */ (document.activeElement);
   const focusables = () => Array.from(panel.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
     .filter(el => !el.hasAttribute('disabled'));
   (focusables()[0] || panel).focus();

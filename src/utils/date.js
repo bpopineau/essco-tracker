@@ -23,7 +23,7 @@ export function parseDate(input) {
       return new Date(Number(y), Number(mo) - 1, Number(d));
     }
     const d = new Date(input);
-    return isNaN(d) ? null : d;
+    return Number.isNaN(d.getTime()) ? null : d;
   }
   return null;
 }
@@ -71,23 +71,23 @@ export const todayStr = () => toISODate();
 export function daysUntil(dateStr, from = new Date()) {
   if (!dateStr) return NaN;
   const target = startOfDay(dateStr);
-  if (isNaN(target)) return NaN;
+  if (Number.isNaN(target.getTime())) return NaN;
   const base = startOfDay(from);
-  return Math.floor((target - base) / MS_DAY);
+  return Math.floor((target.getTime() - base.getTime()) / MS_DAY);
 }
 
 /** Absolute day difference between two dates (LOCAL, |a-b|) */
 export function daysBetween(a, b) {
   const da = startOfDay(a);
   const db = startOfDay(b);
-  if (isNaN(da) || isNaN(db)) return NaN;
-  return Math.abs(Math.floor((da - db) / MS_DAY));
+  if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return NaN;
+  return Math.abs(Math.floor((da.getTime() - db.getTime()) / MS_DAY));
 }
 
 /** Add N days (returns a new Date) */
 export function addDays(input, n = 0) {
   const d = startOfDay(input);
-  if (isNaN(d)) return null;
+  if (Number.isNaN(d.getTime())) return null;
   d.setDate(d.getDate() + Number(n || 0));
   return d;
 }
@@ -96,10 +96,12 @@ export function addDays(input, n = 0) {
 export function compareDates(a, b) {
   const da = startOfDay(a);
   const db = startOfDay(b);
-  if (isNaN(da) && isNaN(db)) return 0;
-  if (isNaN(da)) return 1;
-  if (isNaN(db)) return -1;
-  return Math.sign(da - db);
+  const daTime = da.getTime();
+  const dbTime = db.getTime();
+  if (Number.isNaN(daTime) && Number.isNaN(dbTime)) return 0;
+  if (Number.isNaN(daTime)) return 1;
+  if (Number.isNaN(dbTime)) return -1;
+  return Math.sign(daTime - dbTime);
 }
 
 /** Convenience flags */

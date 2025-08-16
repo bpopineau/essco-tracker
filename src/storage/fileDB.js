@@ -35,16 +35,17 @@ function open() {
     }
     const req = indexedDB.open(DB, 2); // bump version when schema changes
     req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      const oldVersion = e.oldVersion || 0;
+      const db = /** @type {IDBOpenDBRequest} */ (e.target).result;
+      const oldVersion = /** @type {IDBVersionChangeEvent} */ (e).oldVersion || 0;
       // Create store if missing
       if (!db.objectStoreNames.contains(STORE)) {
         db.createObjectStore(STORE, { keyPath: 'id' });
       } else {
         // Migration path: preserve and migrate records if new fields are added
         // (future-proof: add migration logic here for new fields)
-        if (oldVersion < req.target.result.version) {
+        if (oldVersion < db.version) {
           const store = req.transaction.objectStore(STORE);
+          void store;
           // Example: migrate records to add new fields with defaults
           // store.openCursor().onsuccess = function(event) {
           //   const cursor = event.target.result;
@@ -62,11 +63,12 @@ function open() {
       if (oldVersion < 2) {
         // example: add indexes, migrate fields without clearing
         const store = req.transaction.objectStore(STORE);
+        void store;
         // store.createIndex('name', 'name', { unique: false });
       }
     };
     req.onsuccess = (e) => {
-      const db = e.target.result;
+      const db = /** @type {IDBOpenDBRequest} */ (e.target).result;
       db.onversionchange = () => db.close();
       resolve(db);
     };
@@ -233,12 +235,12 @@ async function relink(id, opts = {}) {
   try {
     let handle = null;
     if (kind === 'directory' && 'showDirectoryPicker' in window) {
-      handle = await window.showDirectoryPicker(opts.pickerOptions || {});
+      handle = await /** @type {any} */ (window).showDirectoryPicker(opts.pickerOptions || {});
     } else if ('showOpenFilePicker' in window) {
-      const picks = await window.showOpenFilePicker(opts.pickerOptions || {});
+      const picks = await /** @type {any} */ (window).showOpenFilePicker(opts.pickerOptions || {});
       handle = picks && picks[0] ? picks[0] : null;
     } else if ('chooseFileSystemEntries' in window) {
-      handle = await window.chooseFileSystemEntries({ type: kind === 'directory' ? 'open-directory' : 'open-file' });
+      handle = await /** @type {any} */ (window).chooseFileSystemEntries({ type: kind === 'directory' ? 'open-directory' : 'open-file' });
     }
 
     if (!handle) return null;

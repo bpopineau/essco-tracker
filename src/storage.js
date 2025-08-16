@@ -8,7 +8,7 @@ let persistFilter = null;
 const statusListeners = new Set();
 function emitStatus(status) {
   statusListeners.forEach(fn => {
-    try { fn(status); } catch {}
+    try { fn(status); } catch { /* noop */ }
   });
 }
 
@@ -123,11 +123,13 @@ export const storage = {
     return merged;
   },
 
-  migrate(snapshot /* , fromVersion */) {
+  migrate(snapshot, _fromVersion) {
+    void _fromVersion;
     return snapshot;
   },
 
-  configure({ persistFilter: filter } = {}) {
+  configure(opts = {}) {
+    const { persistFilter: filter } = opts;
     persistFilter = typeof filter === 'function' ? filter : null;
   },
 
