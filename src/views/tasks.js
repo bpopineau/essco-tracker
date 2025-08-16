@@ -8,7 +8,7 @@ const STATUS = ['backlog','in_progress','blocked','done'];
 const PRIORITIES = ['low','med','high'];
 
 // unify fileDB source (module import first, then optional global)
-const fileDB = (typeof window !== 'undefined' && window.fileDB) ? window.fileDB : fileDBMod;
+const fileDB = (typeof window !== 'undefined' && /** @type {any} */ (window).fileDB) ? /** @type {any} */ (window).fileDB : fileDBMod;
 const supportsPicker = typeof window !== 'undefined' && 'showOpenFilePicker' in window;
 
 // Fallback-safe helpers
@@ -19,9 +19,6 @@ export function mountTasks(root, store){
   const getUser   = (id)=> store.get().users.find(u=>u.id===id);
   const usersList = ()=> store.get().users;
   const projectTasks = (pid)=> store.get().tasks.filter(t=>t.project_id===pid);
-  const projectNotes = (pid)=> store.get().notes
-    .filter(n=>n.project_id===pid)
-    .sort((a,b)=> b.meeting_date.localeCompare(a.meeting_date));
 
   // --- ensure filters exist in UI state (non-destructive) ---
   const ensureFilters = ()=>{
@@ -115,7 +112,7 @@ export function mountTasks(root, store){
 
   async function relinkAttachment(taskId, att){
     if (!supportsPicker) { toast('Relink not supported in this browser.', { type:'warn' }); return null; }
-    const picks = await showOpenFilePicker({ multiple:false });
+    const picks = await /** @type {any} */ (window).showOpenFilePicker({ multiple:false });
     const h = picks[0]; if (!h) return null;
     // If fileDB exposes relink, prefer it
     if (hasFileDB() && typeof fileDB.relink === 'function') {
@@ -140,7 +137,7 @@ export function mountTasks(root, store){
       return;
     }
     try{
-      const picks = await showOpenFilePicker({ multiple:true });
+      const picks = await /** @type {any} */ (window).showOpenFilePicker({ multiple:true });
       const newMetas = [];
       for (const h of picks){
         const id = await fdPutHandle(h);
@@ -185,7 +182,7 @@ export function mountTasks(root, store){
       tasks: s.tasks.map(t => t.id===taskId ? { ...t, attachments: (t.attachments||[]).filter(a=>a.id!==att.id) } : t)
     }));
     if (hasFileDB() && typeof fileDB.delHandle === 'function'){
-      try{ await fileDB.delHandle(att.id); }catch{}
+      try{ await fileDB.delHandle(att.id); }catch{ /* noop */ }
     }
     toast('Attachment removed', { type:'success' });
   }
@@ -250,7 +247,7 @@ export function mountTasks(root, store){
     document.body.appendChild(modal);
 
     // Focus management (trap + restore)
-    const prevFocus = document.activeElement;
+    const prevFocus = /** @type {HTMLElement|null} */ (document.activeElement);
     const focusables = () => Array.from(panel.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
       .filter(el => !el.hasAttribute('disabled'));
     (focusables()[0] || panel).focus();
@@ -421,7 +418,7 @@ export function mountTasks(root, store){
         const s = store.get();
         const t = s.tasks.find(x=>x.id===id); if (!t) return;
         if (t.status === drop.dataset.status) return;
-        store.update((_s)=>({ tasks: s.tasks.map(x=>x.id===id? { ...x, status: drop.dataset.status } : x) }));
+        store.update((st)=>({ tasks: st.tasks.map(x=>x.id===id? { ...x, status: drop.dataset.status } : x) }));
         drop.classList.remove('is-over');
       });
     }

@@ -16,11 +16,11 @@ export function mountSidebar(listEl, searchEl, store){
       title:'Create a new project'
     });
     searchEl.parentElement.appendChild(addBtn);
-    addBtn.addEventListener('click', ()=> openCreateProjectModal(store, addBtn));
+    addBtn.addEventListener('click', ()=> openCreateProjectModal(store));
   }
 
   // Delegated: select project (mouse)
-  const offSelect = on(listEl, 'click', '.proj', (e) => {
+  on(listEl, 'click', '.proj', (e) => {
     if (e.target.closest('[data-del]')) return; // ignore delete clicks
     const item = e.delegateTarget;
     const id = item?.dataset?.id;
@@ -30,7 +30,7 @@ export function mountSidebar(listEl, searchEl, store){
   });
 
   // Delegated: select project (keyboard: Enter/Space)
-  const offSelectKey = on(listEl, 'keydown', '.proj', (e) => {
+  on(listEl, 'keydown', '.proj', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     e.preventDefault();
     const item = e.delegateTarget;
@@ -41,7 +41,7 @@ export function mountSidebar(listEl, searchEl, store){
   });
 
   // Delegated: delete project with Undo (restores tasks/notes too)
-  const offDelete = on(listEl, 'click', '[data-del]', (e) => {
+  on(listEl, 'click', '[data-del]', (e) => {
     e.stopPropagation();
     const item = e.target.closest('.proj');
     const id = item?.dataset?.id;
@@ -162,7 +162,7 @@ export function mountSidebar(listEl, searchEl, store){
 }
 
 /* ----------------- Modal: Create Project ----------------- */
-function openCreateProjectModal(store, triggerBtn){
+function openCreateProjectModal(store){
   const state = store.get();
   const modal = el('div', { className:'modal' });
   const panel = el('div', { className:'panel', role:'dialog', ariaModal:'true' });
@@ -205,7 +205,7 @@ function openCreateProjectModal(store, triggerBtn){
   document.body.appendChild(modal);
 
   // Focus management (trap + restore)
-  const prevFocus = document.activeElement;
+  const prevFocus = /** @type {HTMLElement|null} */ (document.activeElement);
   const focusables = () => Array.from(panel.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter(el => !el.hasAttribute('disabled'));
   (focusables()[0] || panel).focus();
 

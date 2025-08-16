@@ -45,7 +45,7 @@ self.addEventListener('activate', (event) => {
 
     // Speed up navigations by letting the browser start the fetch early
     if ('navigationPreload' in self.registration) {
-      try { await self.registration.navigationPreload.enable(); } catch {}
+      try { await self.registration.navigationPreload.enable(); } catch { /* noop */ }
     }
 
     await self.clients.claim();
@@ -96,7 +96,7 @@ async function networkFirstNavigation(event) {
       cache.put(event.request, pre.clone());
       return pre;
     }
-  } catch {}
+  } catch { /* noop */ }
 
   // Try the network (fresh)
   try {

@@ -4,7 +4,13 @@
 export const $  = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-/** Create a DOM element with props + children (backwards compatible signature) */
+/**
+ * Create a DOM element with props + children (backwards compatible signature)
+ * @param {string} tag
+ * @param {Record<string, any>} [props]
+ * @param {any} [children]
+ * @returns {any}
+ */
 export function el(tag, props = {}, children = []) {
   // Support both el(tag, props, children[]) and el(tag, props, ...children)
   if (arguments.length > 3) {
@@ -20,7 +26,13 @@ export function el(tag, props = {}, children = []) {
   return node;
 }
 
-/** SVG element helper */
+/**
+ * SVG element helper
+ * @param {string} tag
+ * @param {Record<string, any>} [props]
+ * @param {any} [children]
+ * @returns {any}
+ */
 export function svg(tag, props = {}, children = []) {
   if (arguments.length > 3) children = Array.prototype.slice.call(arguments, 2);
   else if (!Array.isArray(children)) children = [children];

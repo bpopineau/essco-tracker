@@ -9,6 +9,11 @@
   "scripts": {
     "test": "node --test"
   },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.5"
+  },
   "keywords": [],
   "author": "",
   "license": "MIT",
