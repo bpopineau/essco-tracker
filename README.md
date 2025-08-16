@@ -24,7 +24,7 @@ Track projects, meeting notes, and tasks without a server — everything stays i
 ### 1. Clone or Download
 ```bash
 git clone https://github.com/bpopineau/essco-tracker.git
-cd SinglePageWebApp
+cd essco-tracker
 ```
 Or download as ZIP from GitHub and unzip.
 
