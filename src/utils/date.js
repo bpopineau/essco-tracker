@@ -28,9 +28,17 @@ export function parseDate(input) {
   return null;
 }
 
-/** Start-of-day (local) */
+/** Start-of-day (local)
+ *
+ * Previously this function would fall back to `new Date()` when given an
+ * invalid input.  Downstream helpers like `daysUntil` rely on receiving an
+ * invalid `Date` (i.e. `NaN`) so that they can propagate the error via
+ * `isNaN`.  Returning today's date for invalid inputs caused values like
+ * `daysUntil('invalid')` to incorrectly return `0` instead of `NaN`.
+ */
 export function startOfDay(input = new Date()) {
-  const d = parseDate(input) ?? new Date();
+  const d = parseDate(input);
+  if (!d) return new Date(NaN);
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
