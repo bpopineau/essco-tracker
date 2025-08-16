@@ -35,31 +35,51 @@ export function createStore(initial, { undoDepth = 0 } = {}) {
   function get() { return state; }
   function getLastChangedKeys() { return [...lastChangedKeys]; }
 
+  // Helper function to validate patch input
+  function validatePatch(patch) {
+    return patch && typeof patch === 'object';
+  }
+
+  // Helper function to compare current state and new state
+  function compareState(before, next) {
+    return isPlainObject(before) && isPlainObject(next)
+      ? shallowEqual(before, next)
+      : Object.is(before, next);
+  }
+
+  // Helper function to apply patch value to existing state
+  function applyPatch(currentValue, newValue) {
+    if (isPlainObject(newValue) && isPlainObject(currentValue)) {
+      return { ...currentValue, ...newValue };
+    } else if (isPlainObject(newValue) && !isPlainObject(currentValue)) {
+      return { ...newValue };
+    } else {
+      return newValue;
+    }
+  }
+
+  // Helper function to detect changes and update pending keys
+  function detectAndRecordChanges(key, before, next) {
+    const isSame = compareState(before, next);
+    if (!isSame) {
+      state[key] = next;
+      pendingKeys.add(key);
+      return true;
+    }
+    return false;
+  }
+
   function set(patch, opts = {}) {
-    if (!patch || typeof patch !== 'object') return;
+    if (!validatePatch(patch)) return;
 
     let changed = false;
     if (undoDepth > 0 && !opts.silent) pushUndo();
 
     for (const [k, v] of Object.entries(patch)) {
       const before = state[k];
-      let next;
+      const next = applyPatch(before, v);
 
-      if (isPlainObject(v) && isPlainObject(before)) {
-        next = { ...before, ...v };
-      } else if (isPlainObject(v) && !isPlainObject(before)) {
-        next = { ...v };
-      } else {
-        next = v;
-      }
-
-      const isSame = isPlainObject(before) && isPlainObject(next)
-        ? shallowEqual(before, next)
-        : Object.is(before, next);
-
-      if (!isSame) {
-        state[k] = next;
-        pendingKeys.add(k);
+      if (detectAndRecordChanges(k, before, next)) {
         changed = true;
       }
     }
