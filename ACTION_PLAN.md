@@ -1,6 +1,6 @@
 # Action Plan (from "works ok" → "rock solid")
 
-Replace any DEV_MODE usage with DEV.
+Replaced outdated dev flag with `DEV`. ✅
 
 - Add lint + type checking (JS projects still).
 
