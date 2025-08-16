@@ -12,9 +12,9 @@ import { mountNotes } from './views/notes.js';
 import { mountSidebar } from './views/sidebar.js';
 import { mountTasks } from './views/tasks.js';
 
-// ---------- Dev_Mode ----------
-const DEV_MODE = true; // set to false in production
-const schema = buildSchema(DEV_MODE);
+// ---------- Dev ----------
+const DEV = true; // set to false in production
+const schema = buildSchema(DEV);
 
 // ---------- Boot ----------
 (async function main () {
@@ -57,7 +57,7 @@ const schema = buildSchema(DEV_MODE);
   }, store);
 
   // Dev-only Reset Seed button
-  if (DEV_MODE) {
+  if (DEV) {
     const actionsRow = document.querySelector('header .row');
     if (actionsRow) {
       const resetBtn = document.createElement('button');
@@ -173,7 +173,7 @@ const schema = buildSchema(DEV_MODE);
       location.reload();
     });
 
-    console.log('ESSCO build', BUILD_VERSION, 'DEV_MODE:', DEV_MODE ? 'dev' : 'prod');
+    console.log('ESSCO build', BUILD_VERSION, 'DEV:', DEV ? 'dev' : 'prod');
   }
 })();
 

@@ -1,6 +1,6 @@
 export const SCHEMA_VERSION = 3;
 
-export function buildSchema(DEV_MODE) {
+export function buildSchema(DEV) {
   const VERSION = SCHEMA_VERSION;
 
   const emptyUI = {
@@ -24,7 +24,7 @@ export function buildSchema(DEV_MODE) {
     ui: emptyUI
   };
 
-  if (!DEV_MODE) return empty;
+  if (!DEV) return empty;
 
   const sample = {
     ...empty,
