@@ -53,7 +53,7 @@ navigator.serviceWorker.register('/sw.js?v=' + BUILD_VERSION).then(reg => {
 function promptReload(worker){ showToast('Update available', 'Reload', () => worker.postMessage({type:'SKIP_WAITING'})); }
 ```
 
-- Preload entry modules in index.html:
+- Preload entry modules in index.html: ✅
 
 ```
 <link rel="modulepreload" href="./src/main.js">
