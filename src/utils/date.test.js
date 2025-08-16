@@ -23,3 +23,7 @@ test('daysUntil returns 0 when dates match', () => {
   const ref = parseDate('2024-02-03');
   assert.equal(daysUntil('2024-02-03', ref), 0);
 });
+
+test('daysUntil returns NaN for invalid dates', () => {
+  assert.ok(Number.isNaN(daysUntil('not-a-date')));
+});
