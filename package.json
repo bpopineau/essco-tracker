@@ -1,0 +1,16 @@
+{
+  "name": "essco-tracker",
+  "version": "1.0.0",
+  "description": "A fast, offline-first project tracker for engineering, construction, and consulting teams.   Track projects, meeting notes, and tasks without a server — everything stays in your browser.",
+  "main": "sw.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module"
+}
